@@ -31,3 +31,7 @@ def token_lifetime_minutes() -> int:
 def cors_origins() -> list[str]:
     raw = os.getenv("CORS_ORIGINS", "http://localhost:5173")
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
+def setting(name: str, default: str = "") -> str:
+    return os.getenv(name, default).strip()

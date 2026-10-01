@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { GuestOnly, ProtectedRoute } from './components/RouteGuards'
-import AuthPage from './pages/AuthPage'
 import WorkspacePage from './pages/WorkspacePage'
 import type { AuthSession, User } from './types'
 

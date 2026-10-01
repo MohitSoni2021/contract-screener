@@ -1,6 +1,6 @@
 # Elcara API
 
-FastAPI backend with MongoDB-backed account registration, login, current-user lookup, JWT logout/revocation, and authenticated PDF/DOCX upload.
+FastAPI backend for accounts and authenticated single-document ingestion. MongoDB stores account/document state, OpenAI creates embeddings, and Qdrant stores location-aware document chunks.
 
 ## Configure and start
 
@@ -9,21 +9,41 @@ cd backend
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 pip install -r requirements.txt
-cp .env.example .env  # Fill in MONGODB_URI and a long random JWT_SECRET_KEY.
+cp .env.example .env
+```
+
+Set `MONGODB_URI`, `JWT_SECRET_KEY`, and `OPENROUTER_API_KEY` in `backend/.env`. Embedding and chat requests use the OpenAI Python SDK pointed at OpenRouter's OpenAI-compatible endpoint. `OPENROUTER_BASE_URL` defaults to `https://openrouter.ai/api/v1`; `OPENROUTER_EMBEDDING_MODEL` or the legacy `OPENAI_EMBEDDING_MODEL` defaults to `openai/text-embedding-3-small`; `OPENROUTER_CHAT_MODEL` or `OPENAI_CHAT_MODEL` defaults to `openai/gpt-4o-mini`. Change these to models supported by your provider account if needed. Start the local Qdrant container at the configured `QDRANT_URL` (default `http://localhost:6333`), then run:
+
+```bash
 uvicorn main:app --reload --port 8000
 ```
 
-The backend reads `backend/.env`; that file is ignored by Git. On startup, the API checks MongoDB connectivity and creates a unique email index plus a TTL index for revoked tokens. API docs are at `http://127.0.0.1:8000/docs`.
+The API checks MongoDB connectivity and creates user, token, and one-active-document indexes on startup. It creates the Qdrant collection on the first successful embedding batch. API docs are at `http://127.0.0.1:8000/docs`.
+
+## Document lifecycle
+
+- `POST /api/documents` — authenticated multipart upload; accepts PDF/DOCX up to 25 MB and returns a document record immediately.
+- `GET /api/documents/current` — returns the authenticated user's active document, if any.
+- `GET /api/documents/{document_id}` — returns extraction/indexing stage and progress, scoped to the owner.
+- `GET /api/documents/{document_id}/conversations` — lists saved chats for the active document.
+- `GET /api/conversations/{conversation_id}` — reopens one saved conversation for its owner.
+- `POST /api/chat/stream` — retrieves owner/document-scoped passages, streams the answer as SSE, and saves the exchange.
+- `GET /api/documents/{document_id}/file` — serves the original file to its authenticated owner for source navigation.
+- `DELETE /api/documents/{document_id}` — removes the finished or failed document and its Qdrant vectors.
+
+PDF extraction preserves page numbers; DOCX extraction reads paragraphs and tables. Canonical extracted text is retained for citation checks. Text is chunked with overlap and indexed in embedding batches. Each vector carries the server-derived `owner_id`, `document_id`, source offsets, and page/block locations. `document_scope()` is the central owner-and-document filter for vector operations. The UI polls status and restores the active document after refresh.
+
+Chat embeds each question, retrieves up to six passages using both the authenticated owner and active document filter, then streams an answer over Server-Sent Events through the OpenAI SDK configured for OpenRouter. Conversation turns and verified citation excerpts are saved in MongoDB. A citation is shown only when its Qdrant passage matches the canonical extracted source text at its stored offsets after whitespace normalization. Clicking a PDF source opens the original file at the cited page and displays the verified passage; DOCX sources show their verified block passage.
+
+The first release supports text-based PDFs and DOCX files. It rejects PDFs without extractable text with an OCR guidance message. Limits are 25 MB, 300 PDF pages, and 3 million extracted characters. Progress runs as an in-process FastAPI background task, so a process restart during ingestion will not automatically resume that job.
 
 ## Authentication routes
 
-- `POST /api/auth/register` — `{ "name", "email", "password" }`; stores a normalized email and Argon2 password hash, then returns a bearer token and public user.
-- `POST /api/auth/login` — `{ "email", "password" }`; returns the same session shape.
+- `POST /api/auth/register` — `{ "name", "email", "password" }`; stores a normalized email and Argon2 password hash.
+- `POST /api/auth/login` — `{ "email", "password" }`.
 - `GET /api/auth/me` — requires `Authorization: Bearer <token>`.
 - `POST /api/auth/logout` — revokes the current token until it expires.
 
-Tokens expire after 60 minutes by default. Adjust `JWT_ACCESS_TOKEN_MINUTES` within the supported 5–1440 minute range. Upload requests also require a bearer token and files are saved under a per-user directory.
-
 ## Current limitations
 
-There is no email verification, password reset, rate limiting, refresh-token flow, or production cookie-based session yet. The frontend keeps the access token in localStorage for this starter. Uploaded-file records, document parsing, Qdrant indexing, OpenAI calls, and chat are not implemented. Use a least-privilege MongoDB database user and restrict network access in MongoDB Atlas before deployment.
+Semantic retrieval is bounded to the six highest ranked chunks; it cannot prove that a clause is absent from a large document. PDF citations open the cited page and highlight matching text-layer spans; the verified quote remains visible beside the viewer because PDF text segmentation can differ from the extracted passage. DOCX citations show the verified excerpt and block location without an in-browser DOCX renderer. Durable job recovery, email verification, password reset, rate limiting, refresh tokens, and production cookie sessions are also not implemented. The frontend keeps its access token in localStorage. Keep `.env` out of Git, use a least-privilege MongoDB user, and restrict MongoDB/Qdrant network access before deployment.

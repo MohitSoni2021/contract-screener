@@ -13,7 +13,7 @@ function UploadCard({ busy, error, onUpload }: UploadCardProps) {
     <section className="upload-card" aria-label="Upload a contract">
       <div className="upload-icon"><span>↑</span></div>
       <h2>Start with your document</h2>
-      <p className="upload-copy">Drop a contract here, or browse files on your device.</p>
+      <p className="upload-copy">Choose a PDF or DOCX. We’ll extract and index its text for this account.</p>
       <button className="primary-button" onClick={() => fileInput.current?.click()} disabled={busy}>
         {busy ? <><span className="spinner" /> Uploading…</> : 'Choose a document'}
       </button>

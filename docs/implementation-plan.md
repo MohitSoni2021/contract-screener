@@ -18,12 +18,14 @@ The hiring assignment has a three-day deadline and evaluates working behavior ov
 - Similarity retrieval plus history-aware streamed answer; SSE cancellation persists partial output.
 - Persist conversations and messages per document.
 
+The single-document chat flow, history API, SSE stream, and source verification are implemented in the current starter. The points below remain completion criteria for validation and higher quality: adversarial quote tests, persistent background job recovery, robust cancellation cleanup, and comprehensive clause coverage.
+
 ### 3. Citation correctness and UI
 
 - Structured model output references candidate chunk IDs and quotes.
 - Server resolves chunks, verifies quote text with whitespace-tolerant matching, and recomputes location.
 - Unsupported statements produce an explicit insufficient-evidence response.
-- PDF citation navigation/highlighting; DOCX display and location strategy documented for chosen renderer.
+- PDF citation navigation with matching text-layer spans highlighted; DOCX citations show verified excerpts and stable block locations (rendered DOCX pagination is not provided).
 - Test adversarially: invented quote, paraphrase, quote duplicated, quote across line/page breaks, wrong chunk ID, and answer with no evidence.
 
 ### 4. Large and advanced document features
@@ -48,4 +50,4 @@ Tracked-change redlining is a viable alternative, but preserving DOCX formatting
 
 ## Scope note
 
-The assignment says assume one user and no account system. The current product request adds registration/login, so the starter implements auth and scopes uploads to the authenticated user. Be prepared to explain this as an intentional product-scope choice; it does not yet implement the assignment's full account-linked document lifecycle or one-active-document limit. Keep owner and document filters mandatory in all future Qdrant access paths; never rely on an unfiltered shared Qdrant search.
+The assignment says assume one user and no account system. The product request adds registration/login, so the starter implements auth and scopes uploads to the authenticated user. The current milestone enforces one active document per account, processes PDF/DOCX text in the background, and indexes it in Qdrant with mandatory owner/document payloads. Keep these filters mandatory in all future Qdrant access paths; never rely on an unfiltered shared Qdrant search.

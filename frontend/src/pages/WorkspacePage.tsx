@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import DocumentProcessingCard from '../components/DocumentProcessingCard'
 import DocumentChat from '../components/DocumentChat'
 import UploadCard from '../components/UploadCard'
 import WorkspaceHeader from '../components/WorkspaceHeader'
@@ -6,6 +7,7 @@ import WorkspaceSidebar from '../components/WorkspaceSidebar'
 import type { UploadedDocument, User } from '../types'
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024
+const IN_PROGRESS = new Set(['queued', 'extracting', 'chunking', 'embedding', 'indexing'])
 
 type WorkspacePageProps = {
   user: User
@@ -15,27 +17,58 @@ type WorkspacePageProps = {
 
 function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
   const [document, setDocument] = useState<UploadedDocument | null>(null)
+  const [restoring, setRestoring] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const [error, setError] = useState('')
+
+  const request = useCallback(async (path: string, init: RequestInit = {}) => {
+    const response = await fetch(path, {
+      ...init,
+      headers: { Authorization: `Bearer ${token}`, ...init.headers },
+    })
+    if (response.status === 204) return null
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.detail ?? 'The request could not be completed.')
+    return result
+  }, [token])
+
+  const refreshStatus = useCallback(async (documentId: string) => {
+    try {
+      const result = await request(`/api/documents/${documentId}`) as UploadedDocument
+      setDocument((current) => current?.document_id === documentId ? result : current)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not refresh document status.')
+    }
+  }, [request])
+
+  useEffect(() => {
+    let cancelled = false
+    request('/api/documents/current')
+      .then((result) => { if (!cancelled) setDocument(result.document as UploadedDocument | null) })
+      .catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load your document.') })
+      .finally(() => { if (!cancelled) setRestoring(false) })
+    return () => { cancelled = true }
+  }, [request])
+
+  useEffect(() => {
+    if (!document || !IN_PROGRESS.has(document.status)) return
+    const timer = window.setInterval(() => void refreshStatus(document.document_id), 1500)
+    return () => window.clearInterval(timer)
+  }, [document, refreshStatus])
 
   async function upload(file?: File) {
     if (!file) return
     setError('')
     if (!/\.(pdf|docx)$/i.test(file.name)) { setError('Choose a PDF or DOCX file.'); return }
-    if (file.size > MAX_FILE_SIZE) { setError('This starter accepts files up to 25 MB.'); return }
+    if (file.size > MAX_FILE_SIZE) { setError('This file is larger than the 25 MB limit.'); return }
 
     setBusy(true)
     try {
       const body = new FormData()
       body.append('file', file)
-      const response = await fetch('/api/documents', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body,
-      })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.detail ?? 'Upload failed. Try again.')
-      setDocument(result as UploadedDocument)
+      const result = await request('/api/documents', { method: 'POST', body }) as UploadedDocument
+      setDocument(result)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not reach the API.')
     } finally {
@@ -43,9 +76,18 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
     }
   }
 
-  function replaceDocument() {
-    setDocument(null)
+  async function removeDocument() {
+    if (!document) return
+    setRemoving(true)
     setError('')
+    try {
+      await request(`/api/documents/${document.document_id}`, { method: 'DELETE' })
+      setDocument(null)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not remove this document.')
+    } finally {
+      setRemoving(false)
+    }
   }
 
   return (
@@ -55,12 +97,17 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
         <WorkspaceSidebar document={document} />
         <section className="main-panel">
           <div className="page-heading">
-            <div><div className="eyebrow">CONTRACT WORKSPACE</div><h1>Clarity, clause by clause.</h1><p>Upload a contract to get grounded answers from your document.</p></div>
-            <div className="secure-badge"><span>✳</span> Source-grounded</div>
+            <div><div className="eyebrow">CONTRACT WORKSPACE</div><h1>Clarity, clause by clause.</h1><p>Upload a contract to prepare a private, searchable document index.</p></div>
+            <div className="secure-badge"><span>✳</span> Private document index</div>
           </div>
-          {document
-            ? <DocumentChat document={document} error={error} onReplace={replaceDocument} />
+          {restoring
+            ? <div className="document-restore" role="status"><span className="spinner" /> Loading your document…</div>
+            : document?.status === 'ready'
+            ? <DocumentChat document={document} token={token} error={error} onReplace={removeDocument} />
+            : document
+            ? <DocumentProcessingCard document={document} removing={removing} onRemove={removeDocument} />
             : <UploadCard busy={busy} error={error} onUpload={upload} />}
+          {document && error && <div className="inline-error" role="alert">{error}</div>}
           <footer className="page-footer"><span>ELCARA CONTRACT INTELLIGENCE</span><span>Built for careful reading <b>·</b> v0.1</span></footer>
         </section>
       </div>

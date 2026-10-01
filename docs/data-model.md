@@ -1,6 +1,6 @@
 # Data model
 
-Relational storage is the source of truth for ownership and lifecycle. Qdrant is a derived search index and must never independently grant access.
+MongoDB is the source of truth for ownership and lifecycle in the current implementation. Qdrant is a derived search index and must never independently grant access.
 
 ## Tables
 
@@ -11,21 +11,23 @@ Relational storage is the source of truth for ownership and lifecycle. Qdrant is
 
 The assignment's single-user mode may use a configured fixed owner instead of this table.
 
-### `documents`
+### `documents` (MongoDB collection)
 
 - `id` (opaque primary key)
 - `owner_id` (required; fixed owner in assignment mode)
 - `original_filename` (display only; never use as a path)
+- `stored_path`, `extension`, `canonical_text` (the extracted text used to verify indexed passages)
 - `media_type` (`application/pdf` or DOCX MIME)
 - `content_hash`
-- `status` (`uploading`, `extracting`, `embedding`, `ready`, `failed`, `deleting`, `deleted`)
+- `status` (`queued`, `extracting`, `chunking`, `embedding`, `indexing`, `ready`, `failed`, `deleted`)
+- `stage`, `progress`, `indexed_chunks`, `error`
 - `failure_code` / `failure_message`
 - `active` (boolean)
 - `index_version`, `embedding_model`, `embedding_dimensions`
 - `page_count`, `chunk_count`
 - `created_at`, `updated_at`, `deleted_at`
 
-Enforce at most one active document per owner. In PostgreSQL use a partial unique index on `owner_id` where `active=true`; in SQLite, use the equivalent supported partial index or a transactionally enforced invariant.
+Enforce at most one active document per owner. The current MongoDB implementation uses a unique partial index on `owner_id` where `active=true`.
 
 ### `document_chunks` (optional relational mirror)
 
@@ -49,6 +51,7 @@ The Qdrant payload should reference these stable IDs and carry only fields neede
 - `role` (`user` or `assistant`)
 - `content`
 - `status` (`complete`, `partial`, `cancelled`, `failed`)
+- `citations` (verified chunk ID, exact source text, and server-resolved locations)
 - `created_at`
 
 ### `citations`

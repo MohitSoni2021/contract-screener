@@ -6,3 +6,7 @@ pwdlib[argon2]
 PyJWT
 python-dotenv
 email-validator
+openai
+qdrant-client
+pymupdf
+python-docx
