@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 import type { ChatCitation, ChatConversation, ChatCoverage, ChatMessage, UploadedDocument, User } from '../types'
 import Brand from './Brand'
 
@@ -313,7 +314,7 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
             ) : messages.map((message) => (
               <article key={message.message_id} className={`mb-8 w-full ${message.role === 'user' ? 'ml-auto max-w-[min(760px,92%)]' : 'mx-auto max-w-[820px]'}`}>
                 <div className={`mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.12em] text-[#839087] ${message.role === 'user' ? 'justify-end' : ''}`}><span className={message.role === 'assistant' ? 'grid h-6 w-6 place-items-center rounded-md bg-[#e8f0eb] font-[Manrope] text-sm font-extrabold normal-case text-[#32664f]' : 'hidden'}>e</span>{message.role === 'user' ? 'You' : 'Elcara'}{message.status === 'cancelled' ? ' · stopped' : message.status === 'failed' ? ' · incomplete' : ''}</div>
-                <div className={`whitespace-pre-wrap break-words text-sm leading-7 ${message.role === 'user' ? 'ml-auto w-fit max-w-full rounded-2xl rounded-br-sm bg-[#e8f0eb] px-4 py-3 text-[#2f4f3f]' : 'max-w-full pl-0 text-[14px] leading-[1.85] text-[#34443a] md:text-[15px]'}`}>
+                <div className={`break-words text-sm leading-7 ${message.role === 'user' ? 'whitespace-pre-wrap ml-auto w-fit max-w-full rounded-2xl rounded-br-sm bg-[#e8f0eb] px-4 py-3 text-[#2f4f3f]' : 'max-w-full pl-0 text-[14px] leading-[1.85] text-[#34443a] md:text-[15px]'}`}>
                   {message.role === 'assistant' ? renderAnswer(message, (citation) => revealCitation(message.message_id, citation)) : message.content}
                   {message.status === 'streaming' && <span className="ml-1 inline-block h-4 w-1 animate-pulse rounded-sm bg-[#579070] align-middle" aria-label="Answer streaming" />}
                 </div>
@@ -397,15 +398,23 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
 
 function renderAnswer(message: ChatMessage, onCitationClick: (citation: ChatCitation) => void) {
   const citationMap = new Map(message.citations.filter((citation) => citation.verified).map((citation) => [citation.source_id, citation]))
-  const parts = message.content.split(SOURCE_MARKER)
-  return parts.map((part, index) => {
-    const citation = citationMap.get(part)
-    if (citation) {
-      return <button className="inline-citation" key={`${message.message_id}-${index}`} onClick={() => onCitationClick(citation)} aria-label={`Open verified source ${part}`}>{citation.source_id}</button>
-    }
-    if (/^S\d+$/.test(part)) return <span key={`${message.message_id}-${index}`}>[{part}]</span>
-    return <span key={`${message.message_id}-${index}`}>{part}</span>
-  })
+  const markdown = message.content.replace(SOURCE_MARKER, (_, sourceId: string) => `[${sourceId}](#verified-${sourceId})`)
+  return <div className="markdown-answer">
+    <ReactMarkdown
+      components={{
+        a: ({ href, children }) => {
+          const sourceId = href?.match(/^#verified-(S\d+)$/)?.[1]
+          const citation = sourceId ? citationMap.get(sourceId) : undefined
+          if (citation) {
+            return <button className="inline-citation" onClick={() => onCitationClick(citation)} aria-label={`Open verified source ${sourceId}`}>{sourceId}</button>
+          }
+          return <a href={href}>{children}</a>
+        },
+      }}
+    >
+      {markdown}
+    </ReactMarkdown>
+  </div>
 }
 
 export default DocumentChat

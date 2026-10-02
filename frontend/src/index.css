@@ -11,6 +11,53 @@
 	color: #a46b43;
 }
 
+.markdown-answer > :first-child {
+	margin-top: 0;
+}
+.markdown-answer > :last-child {
+	margin-bottom: 0;
+}
+.markdown-answer p {
+	margin: 0 0 1em;
+}
+.markdown-answer h1,
+.markdown-answer h2,
+.markdown-answer h3 {
+	margin: 1.1em 0 0.45em;
+	font-family: Manrope, sans-serif;
+	font-weight: 700;
+	line-height: 1.35;
+	color: #283c33;
+}
+.markdown-answer h1 { font-size: 1.25em; }
+.markdown-answer h2 { font-size: 1.12em; }
+.markdown-answer h3 { font-size: 1em; }
+.markdown-answer ol,
+.markdown-answer ul {
+	margin: 0.35em 0 1em;
+	padding-left: 1.5em;
+}
+.markdown-answer li {
+	margin: 0.3em 0;
+	padding-left: 0.15em;
+}
+.markdown-answer strong {
+	font-weight: 700;
+	color: #2d493b;
+}
+.markdown-answer blockquote {
+	margin: 0.75em 0;
+	padding-left: 1em;
+	border-left: 3px solid #c8dace;
+	color: #627269;
+}
+.markdown-answer code {
+	padding: 0.1em 0.3em;
+	border-radius: 3px;
+	background: #eef3ef;
+	font-size: 0.9em;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
