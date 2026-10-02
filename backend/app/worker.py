@@ -88,7 +88,12 @@ async def run_worker() -> None:
             document_id = document["document_id"]
             heartbeat = asyncio.create_task(_renew_lease(database, document_id, worker_id))
             try:
-                await ingest_document(database, document, Path(document["stored_path"]))
+                await ingest_document(
+                    database,
+                    document,
+                    Path(document["stored_path"]),
+                    worker_id=worker_id,
+                )
             except Exception:
                 logger.exception("Ingestion worker failed", extra={"document_id": document_id})
             finally:

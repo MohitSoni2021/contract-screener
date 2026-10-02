@@ -19,6 +19,23 @@ ALLOWED_EXTENSIONS = {".pdf", ".docx"}
 IN_PROGRESS_STATUSES = {"extracting", "chunking", "embedding", "indexing"}
 
 
+def validate_upload_content(extension: str, size: int, header: bytes, limit: int) -> None:
+    """Validate upload bytes after streaming them to disk.
+
+    Keeping this policy separate from the request handler makes malformed-file
+    and size-limit behavior easy to test and keeps the handler focused on I/O.
+    """
+    if size == 0:
+        raise HTTPException(status_code=400, detail="The selected file is empty.")
+    if size > limit:
+        limit_mb = limit // (1024 * 1024)
+        raise HTTPException(status_code=413, detail=f"File is larger than the configured {limit_mb} MB upload limit.")
+    if extension == ".pdf" and b"%PDF-" not in header:
+        raise HTTPException(status_code=415, detail="This file does not appear to be a valid PDF.")
+    if extension == ".docx" and not header.startswith(b"PK"):
+        raise HTTPException(status_code=415, detail="This file does not appear to be a valid DOCX document.")
+
+
 def _public_document(document: dict[str, Any] | None) -> dict[str, Any] | None:
     if document is None:
         return None
@@ -79,15 +96,11 @@ async def upload_document(
     finally:
         await file.close()
 
-    if size == 0:
+    try:
+        validate_upload_content(extension, size, header, upload_limit)
+    except HTTPException:
         saved_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail="The selected file is empty.")
-    if extension == ".pdf" and b"%PDF-" not in header:
-        saved_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=415, detail="This file does not appear to be a valid PDF.")
-    if extension == ".docx" and not header.startswith(b"PK"):
-        saved_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=415, detail="This file does not appear to be a valid DOCX document.")
+        raise
 
     now = datetime.now(timezone.utc)
     record = {

@@ -23,27 +23,51 @@ EMBEDDING_BATCH_SIZE = 64
 logger = logging.getLogger(__name__)
 
 
+class IngestionLeaseLost(RuntimeError):
+    """Raised when another worker has taken ownership of a document."""
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def _set_status(database: Any, document_id: str, **fields: Any) -> None:
+async def _set_status(
+    database: Any,
+    document_id: str,
+    *,
+    worker_id: str | None = None,
+    **fields: Any,
+) -> None:
+    """Update ingestion progress without allowing a stale worker to win a race.
+
+    A worker can be replaced after its lease expires. Scoping progress writes to
+    that worker keeps the replacement worker's state authoritative.
+    """
+    query = {"document_id": document_id, "active": True}
+    if worker_id is not None:
+        query["worker_id"] = worker_id
     update = {"$set": {**fields, "updated_at": _now()}}
     if fields.get("status") in {"ready", "failed"}:
         update["$unset"] = {"worker_id": "", "lease_expires_at": ""}
-    await database.documents.update_one(
-        {"document_id": document_id}, update
-    )
+    result = await database.documents.update_one(query, update)
+    if worker_id is not None and result.matched_count == 0:
+        raise IngestionLeaseLost("The document ingestion lease is no longer valid.")
 
 
-async def ingest_document(database: Any, document: dict[str, Any], file_path: Path) -> None:
+async def ingest_document(
+    database: Any,
+    document: dict[str, Any],
+    file_path: Path,
+    *,
+    worker_id: str | None = None,
+) -> None:
     document_id = document["document_id"]
     qdrant = create_qdrant_client()
     embedding_client: AsyncOpenAI | None = None
     try:
         # Keep the OpenAI SDK interface so the provider can be changed independently later.
         embedding_client = create_ai_client()
-        await _set_status(database, document_id, status="extracting", stage="Extracting text", progress=8)
+        await _set_status(database, document_id, worker_id=worker_id, status="extracting", stage="Extracting text", progress=8)
         if document["extension"] == ".pdf":
             page_count = await asyncio.to_thread(pdf_page_count, file_path)
             page_limit = max_pdf_pages()
@@ -62,7 +86,7 @@ async def ingest_document(database: Any, document: dict[str, Any], file_path: Pa
         await _set_status(
             database, document_id, status="chunking", stage="Preparing document sections", progress=22,
             page_count=extracted.page_count, canonical_text=extracted.text,
-            structure=extract_structure(extracted.text, extracted.blocks),
+            structure=extract_structure(extracted.text, extracted.blocks), worker_id=worker_id,
         )
         chunks = chunk_document(extracted.text, extracted.blocks)
         if not chunks:
@@ -70,7 +94,7 @@ async def ingest_document(database: Any, document: dict[str, Any], file_path: Pa
         model = embedding_model()
         await _set_status(
             database, document_id, status="embedding", stage="Creating searchable sections", progress=30,
-            chunk_count=len(chunks),
+            chunk_count=len(chunks), worker_id=worker_id,
         )
 
         for batch_start in range(0, len(chunks), EMBEDDING_BATCH_SIZE):
@@ -94,31 +118,33 @@ async def ingest_document(database: Any, document: dict[str, Any], file_path: Pa
             progress = 30 + int(60 * min(batch_start + len(batch), len(chunks)) / len(chunks))
             await _set_status(
                 database, document_id, status="indexing", stage="Saving sections to your private index",
-                progress=min(progress, 94), indexed_chunks=batch_start + len(batch),
+                progress=min(progress, 94), indexed_chunks=batch_start + len(batch), worker_id=worker_id,
             )
 
         await _set_status(
             database, document_id, status="ready", stage="Ready to ask questions", progress=100,
-            indexed_chunks=len(chunks), completed_at=_now(),
+            indexed_chunks=len(chunks), completed_at=_now(), worker_id=worker_id,
         )
     except Exception as exc:
         logger.exception("Document ingestion failed", extra={"document_id": document_id})
-        try:
-            await delete_document_vectors(
-                qdrant, owner_id=document["owner_id"], document_id=document_id
+        if not isinstance(exc, IngestionLeaseLost):
+            try:
+                await delete_document_vectors(
+                    qdrant, owner_id=document["owner_id"], document_id=document_id
+                )
+            except Exception:
+                pass
+            await _set_status(
+                database, document_id, status="failed", stage="Processing failed", progress=0,
+                worker_id=worker_id,
+                error=(
+                    str(exc)
+                    if isinstance(exc, ValueError)
+                    else f"{type(exc).__name__}: {exc}"
+                    if str(exc)
+                    else f"{type(exc).__name__}: ingestion service error"
+                ),
             )
-        except Exception:
-            pass
-        await _set_status(
-            database, document_id, status="failed", stage="Processing failed", progress=0,
-            error=(
-                str(exc)
-                if isinstance(exc, ValueError)
-                else f"{type(exc).__name__}: {exc}"
-                if str(exc)
-                else f"{type(exc).__name__}: ingestion service error"
-            ),
-        )
     finally:
         if embedding_client is not None:
             await embedding_client.close()

@@ -10,3 +10,6 @@ openai
 qdrant-client
 pymupdf
 python-docx
+
+# Development and automated Part A tests.
+pytest
