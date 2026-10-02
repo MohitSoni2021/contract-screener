@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import DocumentProcessingCard from "../components/DocumentProcessingCard";
 import UploadCard from "../components/UploadCard";
-import DocumentComparison from "../components/DocumentComparison";
 import WorkspaceHeader from "../components/WorkspaceHeader";
 import WorkspaceSidebar from "../components/WorkspaceSidebar";
 import type { User } from "../types";
@@ -178,7 +177,6 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
                   <span className="next-step-arrow">→</span>
                 </div>
               )}
-              {documents.filter((item) => item.status === "ready").length >= 2 && <DocumentComparison documents={documents} token={token} />}
             </>
           )}
           {removingDocument && (

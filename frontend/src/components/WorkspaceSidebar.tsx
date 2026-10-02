@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import type { UploadedDocument } from '../types'
 
 type WorkspaceSidebarProps = {
@@ -11,6 +12,8 @@ type WorkspaceSidebarProps = {
 }
 
 function WorkspaceSidebar({ documents, selectedDocumentId, onSelect, onAddDocument, removingId, onRemove }: WorkspaceSidebarProps) {
+  const navigate = useNavigate()
+  const location = useLocation()
   const fileInput = useRef<HTMLInputElement>(null)
   const [menu, setMenu] = useState<{ document: UploadedDocument; x: number; y: number } | null>(null)
 
@@ -27,7 +30,8 @@ function WorkspaceSidebar({ documents, selectedDocumentId, onSelect, onAddDocume
   return (
     <aside className="sticky top-[70px] flex h-[calc(100dvh-70px)] w-[246px] shrink-0 flex-col overflow-y-auto border-r border-[#e8eae5] bg-[#f6f7f4] px-[19px] pb-[22px] pt-[35px] max-[760px]:hidden">
       <div className="sidebar-label">WORKSPACE</div>
-      <button className="nav-item active"><span className="nav-icon">▤</span> My documents</button>
+      <button className={`nav-item ${location.pathname === '/workspace' ? 'active' : ''}`} onClick={() => navigate('/workspace')}><span className="nav-icon">▤</span> My documents</button>
+      <button className={`nav-item ${location.pathname === '/compare-doc' ? 'active' : ''}`} onClick={() => navigate('/compare-doc')}><span className="nav-icon">⇄</span> Compare documents</button>
       <button className="sidebar-add-button" onClick={() => fileInput.current?.click()}><span>+</span> Add document</button>
       <input ref={fileInput} className="visually-hidden" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => { onAddDocument(event.target.files?.[0]); event.currentTarget.value = '' }} />
       <div className="sidebar-divider" />

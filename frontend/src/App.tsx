@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { GuestOnly, ProtectedRoute } from './components/RouteGuards'
 import WorkspacePage from './pages/WorkspacePage'
 import ChatPage from './pages/ChatPage'
+import CompareDocPage from './pages/CompareDocPage'
 import type { AuthSession, User } from './types'
 
 const TOKEN_KEY = 'elcara_access_token'
@@ -78,6 +79,14 @@ function App() {
         element={(
           <ProtectedRoute user={user} restoring={restoring}>
             {user && <ChatPage user={user} token={token} onLogout={logout} />}
+          </ProtectedRoute>
+        )}
+      />
+      <Route
+        path="/compare-doc"
+        element={(
+          <ProtectedRoute user={user} restoring={restoring}>
+            {user && <CompareDocPage user={user} token={token} onLogout={logout} />}
           </ProtectedRoute>
         )}
       />
