@@ -36,15 +36,7 @@ function CompareDocPage({ user, token, onLogout }: CompareDocPageProps) {
           userName={user.name}
           onLogout={onLogout}
         />
-        <section className="comparison-main-panel">
-          <div className="page-heading dashboard-heading">
-            <div>
-              <div className="eyebrow">DOCUMENT COMPARISON</div>
-              <h1>See what changed between versions.</h1>
-              <p>Compare clauses side by side, separate risk from wording, and keep every change tied to its source.</p>
-            </div>
-            <div className="secure-badge"><span>✳</span> Source traceable</div>
-          </div>
+        <section className="comparison-main-panel !p-0 flex h-full min-h-0 w-full flex-1 flex-col">
           {loading ? (
             <div className="document-restore" role="status"><span className="spinner" /> Loading your documents…</div>
           ) : documents.filter((document) => document.status === 'ready').length < 2 ? (

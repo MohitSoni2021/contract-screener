@@ -35,7 +35,7 @@ function DocumentComparison({ documents, token }: Props) {
   const selectedOld = ready.find((document) => document.document_id === oldId)
   const selectedNew = ready.find((document) => document.document_id === newId)
 
-  return <section className="comparison-section" aria-labelledby="comparison-title">
+  return <section className={`comparison-section flex min-h-0 w-full flex-col ${changes.length > 0 ? '!m-0 !max-w-none !rounded-none !p-0 flex-1' : ''}`} aria-labelledby="comparison-title">
     <div className="comparison-heading">
       <div><div className="eyebrow">VERSION REVIEW</div><h2 id="comparison-title">Compare two document versions</h2><p>Align clauses, spot material risk, and keep both originals one click away.</p></div>
       <span className="comparison-count">{changes.filter((change) => change.significance === 'substantive').length} substantive</span>
@@ -50,7 +50,7 @@ function DocumentComparison({ documents, token }: Props) {
     {error && <div className="inline-error" role="alert">{error}</div>}
     {changes.length > 0 && <>
       <div className="comparison-toolbar"><div className="comparison-filters">{[['all', 'All'], ['substantive', 'Substantive'], ['wording', 'Wording'], ['formatting', 'Formatting']].map(([value, label]) => <button className={filter === value ? 'selected' : ''} key={value} onClick={() => setFilter(value)}>{label}</button>)}</div><label>Sort<select value={sort} onChange={(event) => setSort(event.target.value as 'position' | 'significance')}><option value="significance">Significance</option><option value="position">Document order</option></select></label></div>
-      <div className="comparison-results">{visibleChanges.map((change) => <article className={`comparison-change ${change.significance}`} key={change.change_id}><div className="comparison-change-meta"><span className={`change-pill ${change.change_type}`}>{change.change_type}</span><span>{change.significance === 'none' ? 'unchanged' : change.significance}</span><span>old §{change.old?.block_number ?? '—'} · new §{change.new?.block_number ?? '—'}</span></div><p>{change.summary}</p><div className="comparison-texts"><div><strong>Earlier</strong><span>{change.old?.text ?? 'Clause not present in earlier version.'}</span></div><div><strong>Later</strong><span>{change.new?.text ?? 'Clause not present in later version.'}</span></div></div></article>)}</div>
+      <div className="comparison-results min-h-0 flex-1 overflow-y-auto">{visibleChanges.map((change) => <article className={`comparison-change ${change.significance}`} key={change.change_id}><div className="comparison-change-meta"><span className={`change-pill ${change.change_type}`}>{change.change_type}</span><span>{change.significance === 'none' ? 'unchanged' : change.significance}</span><span>old §{change.old?.block_number ?? '—'} · new §{change.new?.block_number ?? '—'}</span></div><p>{change.summary}</p><div className="comparison-texts"><div><strong>Earlier</strong><span>{change.old?.text ?? 'Clause not present in earlier version.'}</span></div><div><strong>Later</strong><span>{change.new?.text ?? 'Clause not present in later version.'}</span></div></div></article>)}</div>
     </>}
   </section>
 }

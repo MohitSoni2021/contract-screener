@@ -1,11 +1,16 @@
+import asyncio
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
+import httpx
 import fitz
 import pytest
 from docx import Document
 from fastapi import HTTPException
 
 from app.routers.documents import validate_upload_content
+from app.routers import chat
 from app.routers.chat import _verified_sources
 from app.services.extraction import extract_document
 from app.services.comparison import compare_documents
@@ -115,3 +120,234 @@ def test_document_comparison_detects_formatting_only_and_wording_changes():
     assert compare_documents(old, new, "old", "new")[0]["change_type"] == "formatting"
     new = ExtractedDocument("", [SourceBlock("Payment must be made within 30 days.", 0, 1)], 0)
     assert compare_documents(old, new, "old", "new")[0]["change_type"] == "wording"
+
+
+class FakeMessages:
+    def __init__(self):
+        self.updates = []
+
+    async def update_one(self, query, update):
+        self.updates.append((query, update))
+
+
+class FakeConversations:
+    def __init__(self):
+        self.updates = []
+
+    async def update_one(self, query, update):
+        self.updates.append((query, update))
+
+
+class FakeDatabase:
+    def __init__(self):
+        self.messages = FakeMessages()
+        self.conversations = FakeConversations()
+
+
+class FakeRequest:
+    def __init__(self, disconnected=False):
+        self.disconnected = disconnected
+
+    async def is_disconnected(self):
+        return self.disconnected
+
+
+class FakeStream:
+    def __init__(self, chunks):
+        self.chunks = chunks
+        self.closed = False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self.chunks:
+            raise StopAsyncIteration
+        chunk = self.chunks.pop(0)
+        if isinstance(chunk, BaseException):
+            raise chunk
+        return chunk
+
+    async def close(self):
+        self.closed = True
+
+
+class BlockingStream(FakeStream):
+    def __init__(self, first_chunk):
+        super().__init__([first_chunk])
+        self.block = asyncio.Event()
+
+    async def __anext__(self):
+        if self.chunks:
+            return self.chunks.pop(0)
+        await self.block.wait()
+        raise StopAsyncIteration
+
+
+class FakeAIClient:
+    def __init__(self, stream=None, error=None):
+        self.stream = stream
+        self.error = error
+        self.closed = False
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+
+    async def create(self, **kwargs):
+        if self.error:
+            raise self.error
+        return self.stream
+
+    async def close(self):
+        self.closed = True
+
+
+class FakeQdrant:
+    def __init__(self):
+        self.closed = False
+
+    async def close(self):
+        self.closed = True
+
+
+def make_chat_chunk(text):
+    return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=text))])
+
+
+async def completed(value):
+    return value
+
+
+def make_chat_dependencies(monkeypatch, *, stream=None, ai_error=None):
+    ai_client = FakeAIClient(stream=stream, error=ai_error)
+    qdrant = FakeQdrant()
+    monkeypatch.setattr(chat, "create_ai_client", lambda: ai_client)
+    monkeypatch.setattr(chat, "create_qdrant_client", lambda: qdrant)
+    monkeypatch.setattr(
+        chat,
+        "_canonical_text",
+        lambda database, document: completed("Payment is due within thirty days."),
+    )
+    monkeypatch.setattr(
+        chat,
+        "_retrieve_sources",
+        lambda **kwargs: completed([{
+            "source_id": "S1",
+            "chunk_id": "chunk-1",
+            "quote": "Payment is due within thirty days.",
+            "verified": True,
+        }]),
+    )
+    return ai_client, qdrant
+
+
+def make_stream_generator(database, request, user=None, question="When is payment due?"):
+    return chat._send_message_events(
+        request=request,
+        database=database,
+        user=user or SimpleNamespace(id="owner-1"),
+        document={"document_id": "document-1", "owner_id": "owner-1", "status": "ready"},
+        conversation_id="conversation-1",
+        assistant_message_id="assistant-1",
+        question=question,
+        history=[],
+    )
+
+
+def decode_events(events):
+    decoded = []
+    for event in events:
+        lines = event.splitlines()
+        decoded.append((lines[0].removeprefix("event: "), json.loads(lines[1].removeprefix("data: "))))
+    return decoded
+
+
+async def collect_events(generator):
+    return [event async for event in generator]
+
+
+def test_chat_stream_completion_persists_answer_and_closes_resources(monkeypatch):
+    stream = FakeStream([make_chat_chunk("Payment is due [[S1]].")])
+    ai_client, qdrant = make_chat_dependencies(monkeypatch, stream=stream)
+    database = FakeDatabase()
+
+    events = asyncio.run(collect_events(make_stream_generator(database, FakeRequest())))
+    decoded = decode_events(events)
+
+    assert decoded[-1][0] == "done"
+    assert decoded[-1][1]["status"] == "complete"
+    persisted = database.messages.updates[-1][1]["$set"]
+    assert persisted["status"] == "complete"
+    assert persisted["content"] == "Payment is due [[S1]]."
+    assert persisted["citations"][0]["source_id"] == "S1"
+    assert stream.closed is True
+    assert ai_client.closed is True
+    assert qdrant.closed is True
+
+
+def test_chat_stream_client_disconnect_persists_cancelled_partial_answer(monkeypatch):
+    stream = FakeStream([make_chat_chunk("Partial answer")])
+    make_chat_dependencies(monkeypatch, stream=stream)
+    database = FakeDatabase()
+
+    events = asyncio.run(collect_events(make_stream_generator(database, FakeRequest(disconnected=True))))
+    decoded = decode_events(events)
+
+    done = next(data for name, data in decoded if name == "done")
+    assert done["status"] == "cancelled"
+    persisted = database.messages.updates[-1][1]["$set"]
+    assert persisted["status"] == "cancelled"
+    assert persisted["content"] == ""
+
+
+def test_chat_stream_task_cancellation_persists_partial_answer_and_closes_resources(monkeypatch):
+    stream = BlockingStream(make_chat_chunk("Partial answer"))
+    ai_client, qdrant = make_chat_dependencies(monkeypatch, stream=stream)
+    database = FakeDatabase()
+
+    async def cancel_while_streaming():
+        task = asyncio.create_task(collect_events(make_stream_generator(database, FakeRequest())))
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(cancel_while_streaming())
+
+    persisted = database.messages.updates[-1][1]["$set"]
+    assert persisted["status"] == "cancelled"
+    assert persisted["content"] == "Partial answer"
+    assert ai_client.closed is True
+    assert qdrant.closed is True
+
+
+def test_chat_stream_partial_document_review_is_persisted_as_complete(monkeypatch):
+    stream = FakeStream([make_chat_chunk("The covered section says [[S1]].")])
+    make_chat_dependencies(monkeypatch, stream=stream)
+    database = FakeDatabase()
+
+    async def partial_sources(**kwargs):
+        return [{"source_id": "S1", "chunk_id": "chunk-1", "quote": "covered", "verified": True}], {
+            "mode": "broad", "complete": False, "covered_chunks": 1, "total_chunks": 4,
+        }
+
+    monkeypatch.setattr(chat, "_retrieve_broad_sources", partial_sources)
+    events = asyncio.run(collect_events(make_stream_generator(database, FakeRequest(), question="Give an overview.")))
+
+    persisted = database.messages.updates[-1][1]["$set"]
+    assert persisted["status"] == "complete"
+    assert "partial document-wide review" in persisted["content"]
+    assert persisted["coverage"]["complete"] is False
+
+
+def test_chat_stream_timeout_emits_retryable_error_and_persists_failure(monkeypatch):
+    timeout = httpx.TimeoutException("qdrant timed out")
+    make_chat_dependencies(monkeypatch, ai_error=timeout)
+    database = FakeDatabase()
+
+    events = asyncio.run(collect_events(make_stream_generator(database, FakeRequest())))
+    decoded = decode_events(events)
+
+    error = next(data for name, data in decoded if name == "error")
+    assert "timed out" in error["message"]
+    assert not any(name == "done" for name, _ in decoded)
+    assert database.messages.updates[-1][1]["$set"]["status"] == "failed"
