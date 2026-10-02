@@ -22,6 +22,9 @@ type StreamEvent = {
   mode?: ChatCoverage['mode']
   complete?: boolean
   source_count?: number
+  total_chunks?: number
+  verified_chunks?: number
+  covered_chunks?: number
   sections?: number
   page_ranges?: number
   message_id?: string
@@ -316,7 +319,7 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
                 </div>
                 {message.role === 'assistant' && message.coverage && message.coverage.mode !== 'focused' && (
                   <div className={`coverage-note ${message.coverage.complete ? '' : 'coverage-partial'}`}>
-                    {message.coverage.complete ? 'Coverage checked' : 'Partial coverage'} · {message.coverage.source_count} verified passages
+                    {message.coverage.complete ? 'Coverage checked' : 'Partial coverage'} · {message.coverage.covered_chunks ?? message.coverage.source_count} of {message.coverage.total_chunks ?? message.coverage.source_count} indexed sections supplied
                     {message.coverage.page_ranges ? ` · ${message.coverage.page_ranges} page ranges` : ''}
                   </div>
                 )}

@@ -49,6 +49,9 @@ export type ChatCoverage = {
   mode: 'focused' | 'broad' | 'contents'
   complete: boolean
   source_count: number
+  total_chunks?: number
+  verified_chunks?: number
+  covered_chunks?: number
   sections?: number
   page_ranges?: number
 }

@@ -177,56 +177,73 @@ def _verified_sources(
 async def _retrieve_broad_sources(
     *, document: dict[str, Any], canonical_text: str, qdrant: AsyncQdrantClient,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    response, _ = await qdrant.scroll(
-        collection_name=collection_name(),
-        scroll_filter=document_scope(
-            document["owner_id"], document["document_id"], active_only=True,
-            index_version=int(document.get("index_version", 1)),
-        ),
-        limit=1000,
-        with_payload=True,
-        with_vectors=False,
-    )
-    verified = _verified_sources(document, canonical_text, response)
+    points = await _scroll_document_points(document=document, qdrant=qdrant)
+    verified = _verified_sources(document, canonical_text, points)
     if not verified:
-        return [], {"mode": "broad", "complete": False, "sections": 0, "source_count": 0}
+        return [], {
+            "mode": "broad", "complete": False, "sections": 0, "source_count": 0,
+            "total_chunks": int(document.get("chunk_count", 0) or 0),
+            "verified_chunks": 0, "covered_chunks": 0,
+        }
 
     # Pick evenly distributed chunks so a long answer has document coverage instead of
     # repeating neighboring passages from one semantic cluster.
+    verified.sort(key=lambda source: (source["char_start"], source["char_end"]))
     selected: list[dict[str, Any]] = []
     step = max(1, len(verified) // BROAD_MAX_SOURCES)
     for source in verified[::step][:BROAD_MAX_SOURCES]:
         selected.append(source)
     page_ranges = {(item["page_start"], item["page_end"]) for item in selected if item["page_start"] is not None}
     structure = document.get("structure") or {}
+    total_chunks = int(document.get("chunk_count", 0) or 0) or len(points)
     return selected, {
         "mode": "broad",
-        "complete": len(selected) >= min(BROAD_MAX_SOURCES, len(verified)),
+        # A bounded sample is useful for a long-document overview, but it is not
+        # evidence that every indexed chunk was supplied to the answer model.
+        "complete": len(selected) == total_chunks and len(verified) == total_chunks,
         "sections": len(structure.get("headings", [])) if isinstance(structure, dict) else 0,
         "source_count": len(selected),
+        "total_chunks": total_chunks,
+        "verified_chunks": len(verified),
+        "covered_chunks": len(selected),
         "page_ranges": len(page_ranges),
     }
+
+
+async def _scroll_document_points(
+    *, document: dict[str, Any], qdrant: AsyncQdrantClient,
+) -> list[Any]:
+    """Read every indexed chunk for bounded document-wide coverage checks."""
+    points: list[Any] = []
+    offset: Any = None
+    while True:
+        page, offset = await qdrant.scroll(
+            collection_name=collection_name(),
+            scroll_filter=document_scope(
+                document["owner_id"], document["document_id"], active_only=True,
+                index_version=int(document.get("index_version", 1)),
+            ),
+            limit=1000,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        points.extend(page)
+        if offset is None:
+            return points
 
 
 async def _retrieve_contents_sources(
     *, document: dict[str, Any], canonical_text: str, qdrant: AsyncQdrantClient,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    response, _ = await qdrant.scroll(
-        collection_name=collection_name(),
-        scroll_filter=document_scope(
-            document["owner_id"], document["document_id"], active_only=True,
-            index_version=int(document.get("index_version", 1)),
-        ),
-        limit=1000,
-        with_payload=True,
-        with_vectors=False,
-    )
+    response = await _scroll_document_points(document=document, qdrant=qdrant)
     contents = (document.get("structure") or {}).get("contents", "")
     if not contents:
         return [], {
             "mode": "contents", "complete": False,
             "sections": len((document.get("structure") or {}).get("headings", [])),
-            "source_count": 0,
+            "source_count": 0, "total_chunks": len(response),
+            "verified_chunks": 0, "covered_chunks": 0,
         }
     candidates = [point for point in response if isinstance(point.payload, dict)]
     terms = {term for term in re.findall(r"[a-z0-9]{4,}", contents.casefold())}
@@ -236,6 +253,9 @@ async def _retrieve_contents_sources(
         "mode": "contents", "complete": bool(contents and sources),
         "sections": len((document.get("structure") or {}).get("headings", [])),
         "source_count": len(sources),
+        "total_chunks": len(response),
+        "verified_chunks": len(sources),
+        "covered_chunks": len(sources),
     }
 
 
@@ -390,6 +410,19 @@ async def _send_message_events(
             lambda match: f"[[{match.group(1)}]]" if match.group(1) in valid_ids else "",
             full_answer,
         ).strip()
+        if (
+            assistant_status == "complete"
+            and mode == "broad"
+            and not coverage.get("complete", False)
+            and filtered_answer
+        ):
+            covered_chunks = coverage.get("covered_chunks", len(sources))
+            total_chunks = coverage.get("total_chunks", "some")
+            filtered_answer = (
+                f"This is a partial document-wide review based on {covered_chunks} of "
+                f"{total_chunks} indexed sections; it does not establish that an item is absent "
+                f"from the full document.\n\n{filtered_answer}"
+            )
         if assistant_status == "complete" and not citations and filtered_answer:
             # Some providers answer correctly but omit the requested marker syntax.
             # Keep that answer visible and attach the first verified passage rather
