@@ -8,6 +8,8 @@ from fastapi import HTTPException
 from app.routers.documents import validate_upload_content
 from app.routers.chat import _verified_sources
 from app.services.extraction import extract_document
+from app.services.comparison import compare_documents
+from app.services.extraction import ExtractedDocument, SourceBlock
 
 
 def make_pdf(path: Path, text: str) -> None:
@@ -87,3 +89,29 @@ def test_quote_verification_rejects_wrong_source_and_accepts_normalized_text():
 
     Point.payload = {**Point.payload, "document_id": "other-document"}
     assert _verified_sources(document, "The payment is due.", [Point()]) == []
+
+
+def test_document_comparison_classifies_material_and_non_material_changes():
+    old = ExtractedDocument("", [
+        SourceBlock("The fee is $10,000.", 0, 1),
+        SourceBlock("Supplier liability is capped at $50,000.", 1, 1),
+        SourceBlock("Notice must be given in writing.", 2, 1),
+    ], 1)
+    new = ExtractedDocument("", [
+        SourceBlock("The fee is $12,000.", 0, 1),
+        SourceBlock("Notice must be given in writing.", 1, 1),
+        SourceBlock("Supplier liability is capped at $100,000.", 2, 1),
+        SourceBlock("A new audit clause applies.", 3, 1),
+    ], 1)
+    changes = compare_documents(old, new, "old", "new")
+    assert any(change["significance"] == "substantive" and "$10,000" in change["old"]["text"] for change in changes)
+    assert sum(change["change_type"] == "moved" for change in changes) == 2
+    assert any(change["change_type"] == "inserted" for change in changes)
+
+
+def test_document_comparison_detects_formatting_only_and_wording_changes():
+    old = ExtractedDocument("", [SourceBlock("Payment is due within 30 days.", 0, 1)], 1)
+    new = ExtractedDocument("", [SourceBlock("Payment is due within 30 days", 0, 1)], 1)
+    assert compare_documents(old, new, "old", "new")[0]["change_type"] == "formatting"
+    new = ExtractedDocument("", [SourceBlock("Payment must be made within 30 days.", 0, 1)], 0)
+    assert compare_documents(old, new, "old", "new")[0]["change_type"] == "wording"

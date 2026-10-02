@@ -23,6 +23,9 @@ export type UploadedDocument = {
   created_at?: string
 }
 
+export type ComparisonSource = { document_id: string; text: string; block_number: number; page_number?: number | null }
+export type ComparisonChange = { change_id: string; change_type: 'unchanged' | 'substantive' | 'wording' | 'formatting' | 'inserted' | 'deleted' | 'moved'; significance: 'none' | 'substantive' | 'wording' | 'formatting'; summary: string; old: ComparisonSource | null; new: ComparisonSource | null }
+
 export type ChatCitation = {
   source_id: string
   chunk_id: string

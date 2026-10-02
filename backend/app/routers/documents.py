@@ -6,17 +6,25 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from pymongo.errors import DuplicateKeyError
 
 from app.config import BACKEND_DIR, max_upload_bytes
 from app.dependencies import AuthenticatedUser, get_current_user, get_database
 from app.services.qdrant_repository import create_qdrant_client, delete_document_vectors
+from app.services.comparison import compare_documents
+from app.services.extraction import extract_document
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 logger = logging.getLogger(__name__)
 UPLOAD_DIR = BACKEND_DIR / "data" / "uploads"
 ALLOWED_EXTENSIONS = {".pdf", ".docx"}
 IN_PROGRESS_STATUSES = {"extracting", "chunking", "embedding", "indexing"}
+
+
+class ComparisonRequest(BaseModel):
+    old_document_id: str
+    new_document_id: str
 
 
 def validate_upload_content(extension: str, size: int, header: bytes, limit: int) -> None:
@@ -147,6 +155,37 @@ async def current_document(
         {"owner_id": user.id, "active": True}, {"_id": 0}, sort=[("created_at", -1)]
     )
     return {"document": _public_document(document)}
+
+
+@router.post("/compare")
+async def compare_document_versions(
+    request: ComparisonRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+    database: Any = Depends(get_database),
+) -> dict[str, Any]:
+    if request.old_document_id == request.new_document_id:
+        raise HTTPException(status_code=400, detail="Choose two different document versions.")
+    old_document = await _owned_document(database, user.id, request.old_document_id)
+    new_document = await _owned_document(database, user.id, request.new_document_id)
+    if old_document.get("status") != "ready" or new_document.get("status") != "ready":
+        raise HTTPException(status_code=409, detail="Both document versions must finish processing before comparison.")
+    try:
+        old_extracted = extract_document(Path(old_document["stored_path"]), old_document["extension"])
+        new_extracted = extract_document(Path(new_document["stored_path"]), new_document["extension"])
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"Could not extract a document version: {exc}") from exc
+    changes = compare_documents(old_extracted, new_extracted, request.old_document_id, request.new_document_id)
+    return {
+        "old_document": _public_document(old_document),
+        "new_document": _public_document(new_document),
+        "changes": changes,
+        "summary": {
+            "total": len(changes),
+            "substantive": sum(change["significance"] == "substantive" for change in changes),
+            "wording": sum(change["significance"] == "wording" for change in changes),
+            "formatting": sum(change["significance"] == "formatting" for change in changes),
+        },
+    }
 
 
 @router.get("/{document_id}")
