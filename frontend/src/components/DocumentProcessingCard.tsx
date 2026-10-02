@@ -13,12 +13,15 @@ function DocumentProcessingCard({ document, removing, onRemove, onOpenChat }: Do
   const progress = Math.max(0, Math.min(100, document.progress ?? 0))
 
   return (
-    <section className="processing-card" aria-live="polite" aria-busy={!failed && !ready}>
-      <div className={`processing-icon ${failed ? 'failed' : ready ? 'ready' : ''}`}>
+    <section className={`processing-card document-tile ${failed ? 'document-tile-failed' : ready ? 'document-tile-ready' : 'document-tile-progress'}`} aria-live="polite" aria-busy={!failed && !ready}>
+      <div className="document-tile-header">
+        <div className={`processing-icon ${failed ? 'failed' : ready ? 'ready' : ''}`}>
         {failed ? '!' : ready ? '✓' : <span className="spinner" />}
+        </div>
+        <span className="document-status">{failed ? 'Needs attention' : ready ? 'Ready to chat' : 'Indexing'}</span>
       </div>
       <div className="processing-filetype">{document.filename.toLowerCase().endsWith('.pdf') ? 'PDF' : 'DOCX'}</div>
-      <h2>{failed ? 'We couldn’t prepare this document' : ready ? 'Your document is ready' : 'Preparing your document'}</h2>
+      <h2>{failed ? 'Couldn’t prepare this file' : ready ? 'Ready for questions' : 'Preparing this file'}</h2>
       <p className="processing-filename" title={document.filename}>{document.filename}</p>
       <div className="progress-track" role="progressbar" aria-label="Document processing progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
         <span style={{ width: `${progress}%` }} />

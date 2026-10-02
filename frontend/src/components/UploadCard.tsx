@@ -10,10 +10,11 @@ function UploadCard({ busy, error, onUpload }: UploadCardProps) {
   const fileInput = useRef<HTMLInputElement>(null)
 
   return (
-    <section className="upload-card" aria-label="Upload a contract">
+    <section className="upload-card upload-tile" aria-label="Upload a document">
       <div className="upload-icon"><span>↑</span></div>
-      <h2>Start with your document</h2>
-      <p className="upload-copy">Choose a PDF or DOCX. We’ll extract and index its text for this account.</p>
+      <div className="upload-tile-label">ADD TO WORKSPACE</div>
+      <h2>Upload another document</h2>
+      <p className="upload-copy">Add a PDF or DOCX and keep its chat separate from your other files.</p>
       <button className="primary-button" onClick={() => fileInput.current?.click()} disabled={busy}>
         {busy ? <><span className="spinner" /> Uploading…</> : 'Choose a document'}
       </button>

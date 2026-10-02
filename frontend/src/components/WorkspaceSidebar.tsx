@@ -25,7 +25,7 @@ function WorkspaceSidebar({ documents, selectedDocumentId, onSelect, onAddDocume
   }, [])
 
   return (
-    <aside className="sidebar">
+    <aside className="sticky top-[70px] flex h-[calc(100dvh-70px)] w-[246px] shrink-0 flex-col overflow-y-auto border-r border-[#e8eae5] bg-[#f6f7f4] px-[19px] pb-[22px] pt-[35px] max-[760px]:hidden">
       <div className="sidebar-label">WORKSPACE</div>
       <button className="nav-item active"><span className="nav-icon">▤</span> My documents</button>
       <button className="sidebar-add-button" onClick={() => fileInput.current?.click()}><span>+</span> Add document</button>
