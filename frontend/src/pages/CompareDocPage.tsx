@@ -36,23 +36,12 @@ function CompareDocPage({ user, token, onLogout }: CompareDocPageProps) {
           userName={user.name}
           onLogout={onLogout}
         />
-        <section className="comparison-main-panel !p-0 flex h-full min-h-0 w-full flex-1 flex-col">
+        <section className="comparison-main-panel flex h-full w-full flex-1 flex-col">
           {loading ? (
             <div className="document-restore" role="status"><span className="spinner" /> Loading your documents…</div>
-          ) : documents.filter((document) => document.status === 'ready').length < 2 ? (
-            <div className="comparison-empty-state">
-              <span className="comparison-empty-icon">⇄</span>
-              <h2>Two ready documents make a comparison.</h2>
-              <p>Upload both versions in your workspace, then return here to align their clauses and review every change.</p>
-              <button className="comparison-button" onClick={() => navigate('/workspace')}>Go to my documents</button>
-            </div>
           ) : (
             <DocumentComparison documents={documents} token={token} />
           )}
-          <footer className="page-footer">
-            <span>ELCARA CONTRACT INTELLIGENCE</span>
-            <span>Built for careful reading <b>·</b> v0.1</span>
-          </footer>
         </section>
       </div>
     </main>
