@@ -96,6 +96,7 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
   const controllerRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sourcePanelOpen, setSourcePanelOpen] = useState(false)
 
   const api = useCallback(async (path: string, init: RequestInit = {}) => {
     const response = await fetch(path, {
@@ -113,6 +114,7 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
     const response = await api(`/api/conversations/${id}`)
     const result = await response.json()
     setConversationId(id)
+    setSelectedCitation(null)
     setMessages(result.messages as ChatMessage[])
     setChatError('')
     if (window.matchMedia('(max-width: 1023px)').matches) setSidebarOpen(false)
@@ -141,6 +143,16 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
     const item = scrollRef.current
     if (item) item.scrollTop = item.scrollHeight
   }, [messages, stageMessage])
+
+  const activeAssistant = [...messages].reverse().find((message) => message.role === 'assistant')
+  const verifiedCitations = activeAssistant?.citations.filter((citation) => citation.verified) ?? []
+
+  useEffect(() => {
+    const selectedIsCurrent = selectedCitation
+      ? verifiedCitations.some((citation) => citation.chunk_id === selectedCitation.chunk_id)
+      : false
+    if (!selectedIsCurrent) setSelectedCitation(verifiedCitations[0] ?? null)
+  }, [conversationId, activeAssistant?.message_id, activeAssistant?.citations, selectedCitation, verifiedCitations])
 
   useEffect(() => {
     if (!selectedCitation && !originalDocumentOpen) {
@@ -173,6 +185,7 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
     setMessages([])
     setQuestion('')
     setChatError('')
+    setSelectedCitation(null)
     if (window.matchMedia('(max-width: 1023px)').matches) setSidebarOpen(false)
   }
 
@@ -182,6 +195,7 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
     setQuestion('')
     setChatError('')
     setStageMessage('Searching your document…')
+    setSelectedCitation(null)
     setBusy(true)
 
     const userMessageId = crypto.randomUUID()
@@ -263,6 +277,7 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
   }
 
   function revealCitation(messageId: string, citation: ChatCitation) {
+    setSelectedCitation(citation)
     const details = globalThis.document.getElementById(`citation-${messageId}-${citation.source_id}`)
     const disclosure = details?.querySelector('details')
     if (disclosure) disclosure.open = true
@@ -270,6 +285,7 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
   }
 
   const isPdf = document.filename.toLowerCase().endsWith('.pdf')
+  const sourcePanelStatus = busy ? stageMessage || 'Verifying source passages…' : loadingHistory ? 'Loading saved sources…' : ''
 
   return (
     <main className="fixed inset-0 z-20 flex h-dvh min-h-0 w-full overflow-hidden bg-[#f6f7f4] text-[#252b28]" aria-label="Chat with your document">
@@ -366,7 +382,31 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
           <div className="shrink-0 px-3 pb-3 pt-1 text-center text-[9px] leading-4 text-[#929d95]">Answers are grounded in retrieved passages from this document. Verify important terms in the cited source.</div>
         </div>
       </div>
-      {(selectedCitation || originalDocumentOpen) && (
+      <aside className={`source-panel ${sourcePanelOpen ? 'source-panel-open' : ''}`} aria-label="Verified document sources">
+        <button className="source-panel-toggle" type="button" onClick={() => setSourcePanelOpen((open) => !open)} aria-expanded={sourcePanelOpen}>
+          <span><span className="source-panel-toggle-icon">⌕</span> Sources{verifiedCitations.length > 0 ? ` · ${verifiedCitations.length}` : ''}</span>
+          <span className="source-panel-toggle-chevron">{sourcePanelOpen ? '⌄' : '⌃'}</span>
+        </button>
+        <div className="source-panel-content">
+          <header className="source-panel-header">
+            <div><div className="citation-heading">VERIFIED SOURCES</div><h2>{selectedCitation ? `Passage ${selectedCitation.source_id}` : 'Document sources'}</h2></div>
+            {selectedCitation && <span className="source-verified-badge">✓ Verified</span>}
+          </header>
+          {sourcePanelStatus && <div className="source-panel-status" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" />{sourcePanelStatus}</div>}
+          {!sourcePanelStatus && verifiedCitations.length === 0 && <div className="source-panel-empty"><span className="source-empty-mark">⌁</span><strong>Sources will appear here</strong><p>Verified source passages from your answer will be shown in this panel.</p></div>}
+          {verifiedCitations.length > 0 && <div className="source-panel-body">
+            <div className="source-panel-list" aria-label="Verified source passages">
+              {verifiedCitations.map((citation) => <button key={citation.chunk_id} type="button" className={`source-panel-card ${selectedCitation?.chunk_id === citation.chunk_id ? 'selected' : ''}`} onClick={() => setSelectedCitation(citation)}><span className="source-panel-card-top"><span className="citation-check">✓</span><strong>{citation.source_id}</strong><span>{citationLocation(citation, isPdf)}</span></span><span className="source-panel-card-quote">{citation.quote}</span></button>)}
+            </div>
+            {selectedCitation && <div className="source-panel-viewer">
+              {sourceLoading && <div className="source-panel-viewer-status" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" />Opening source…</div>}
+              {isPdf && sourceUrl && <Suspense fallback={<div className="source-panel-viewer-status" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" />Loading PDF viewer…</div>}><PdfCitationViewer key={selectedCitation.chunk_id} sourceUrl={sourceUrl} citation={selectedCitation} /></Suspense>}
+              {!isPdf && <div className="source-panel-docx-quote"><div className="citation-heading">EXACT EXTRACTED TEXT</div><blockquote><mark>{selectedCitation.quote}</mark></blockquote></div>}
+            </div>}
+          </div>}
+        </div>
+      </aside>
+      {originalDocumentOpen && (
         <div className="source-overlay" role="presentation" onClick={() => { setSelectedCitation(null); setOriginalDocumentOpen(false) }}>
           <section className={`source-modal ${originalDocumentOpen ? 'original-document-modal' : ''}`} role="dialog" aria-modal="true" aria-label={originalDocumentOpen ? 'Original document' : 'Verified source passage'} onClick={(event) => event.stopPropagation()}>
             <header className="source-modal-header">
