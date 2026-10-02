@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import DocumentComparison from '../components/DocumentComparison'
-import WorkspaceHeader from '../components/WorkspaceHeader'
 import WorkspaceSidebar from '../components/WorkspaceSidebar'
 import type { User } from '../types'
 import type { AppDispatch, RootState } from '../store/store'
@@ -24,9 +23,8 @@ function CompareDocPage({ user, token, onLogout }: CompareDocPageProps) {
   }, [dispatch, token])
 
   return (
-    <main className="app-shell">
-      <WorkspaceHeader user={user} onLogout={onLogout} />
-      <div className="workspace" id="top">
+    <main className="comparison-app-shell" aria-label="Document comparison workspace">
+      <div className="comparison-workspace" id="top">
         <WorkspaceSidebar
           documents={documents}
           selectedDocumentId={null}
@@ -34,8 +32,11 @@ function CompareDocPage({ user, token, onLogout }: CompareDocPageProps) {
           onAddDocument={() => navigate('/workspace')}
           removingId={null}
           onRemove={() => undefined}
+          collapsible
+          userName={user.name}
+          onLogout={onLogout}
         />
-        <section className="main-panel compare-page-panel">
+        <section className="comparison-main-panel">
           <div className="page-heading dashboard-heading">
             <div>
               <div className="eyebrow">DOCUMENT COMPARISON</div>

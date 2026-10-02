@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import DocumentProcessingCard from "../components/DocumentProcessingCard";
 import UploadCard from "../components/UploadCard";
-import WorkspaceHeader from "../components/WorkspaceHeader";
 import WorkspaceSidebar from "../components/WorkspaceSidebar";
 import type { User } from "../types";
 import { useNavigate } from "react-router-dom";
@@ -82,9 +81,8 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
   }
 
   return (
-    <main className="app-shell">
-      <WorkspaceHeader user={user} onLogout={onLogout} />
-      <div className="workspace" id="top">
+    <main className="comparison-app-shell workspace-app-shell" aria-label="Document workspace">
+      <div className="comparison-workspace" id="top">
         <WorkspaceSidebar
           documents={documents}
           selectedDocumentId={null}
@@ -96,8 +94,11 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
           onRemove={(documentId) =>
             void dispatch(removeDocument({ token, documentId }))
           }
+          collapsible
+          userName={user.name}
+          onLogout={onLogout}
         />
-        <section className="main-panel">
+        <section className="comparison-main-panel workspace-main-panel">
           <div className="page-heading dashboard-heading">
             <div>
               <div className="eyebrow">YOUR WORKSPACE</div>
