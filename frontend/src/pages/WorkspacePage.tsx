@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import DocumentProcessingCard from '../components/DocumentProcessingCard'
-import DocumentChat from '../components/DocumentChat'
 import UploadCard from '../components/UploadCard'
 import WorkspaceHeader from '../components/WorkspaceHeader'
 import WorkspaceSidebar from '../components/WorkspaceSidebar'
 import type { UploadedDocument, User } from '../types'
+import { useNavigate } from 'react-router-dom'
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024
 const IN_PROGRESS = new Set(['queued', 'extracting', 'chunking', 'embedding', 'indexing'])
@@ -18,11 +18,13 @@ type WorkspacePageProps = {
 type ApiResponse = {
   detail?: string
   document?: UploadedDocument | null
+  documents?: UploadedDocument[]
   [key: string]: unknown
 }
 
 function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
-  const [document, setDocument] = useState<UploadedDocument | null>(null)
+  const [documents, setDocuments] = useState<UploadedDocument[]>([])
+  const navigate = useNavigate()
   const [restoring, setRestoring] = useState(true)
   const [busy, setBusy] = useState(false)
   const [removing, setRemoving] = useState(false)
@@ -46,7 +48,7 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
   const refreshStatus = useCallback(async (documentId: string) => {
     try {
       const result = await request(`/api/documents/${documentId}`) as UploadedDocument
-      setDocument((current) => current?.document_id === documentId ? result : current)
+      setDocuments((current) => current.map((item) => item.document_id === documentId ? result : item))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not refresh document status.')
     }
@@ -54,18 +56,19 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
 
   useEffect(() => {
     let cancelled = false
-    request('/api/documents/current')
-      .then((result) => { if (!cancelled) setDocument((result?.document as UploadedDocument | null) ?? null) })
-      .catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load your document.') })
+    request('/api/documents')
+      .then((result) => { if (!cancelled) setDocuments(result?.documents ?? []) })
+      .catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load your documents.') })
       .finally(() => { if (!cancelled) setRestoring(false) })
     return () => { cancelled = true }
   }, [request])
 
   useEffect(() => {
-    if (!document || !IN_PROGRESS.has(document.status)) return
-    const timer = window.setInterval(() => void refreshStatus(document.document_id), 1500)
+    const processingDocuments = documents.filter((item) => IN_PROGRESS.has(item.status))
+    if (processingDocuments.length === 0) return
+    const timer = window.setInterval(() => processingDocuments.forEach((item) => void refreshStatus(item.document_id)), 1500)
     return () => window.clearInterval(timer)
-  }, [document, refreshStatus])
+  }, [documents, refreshStatus])
 
   async function upload(file?: File) {
     if (!file) return
@@ -78,7 +81,7 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
       const body = new FormData()
       body.append('file', file)
       const result = await request('/api/documents', { method: 'POST', body }) as UploadedDocument
-      setDocument(result)
+      setDocuments((current) => [result, ...current])
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not reach the API.')
     } finally {
@@ -86,13 +89,12 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
     }
   }
 
-  async function removeDocument() {
-    if (!document) return
+  async function removeDocument(documentId: string) {
     setRemoving(true)
     setError('')
     try {
-      await request(`/api/documents/${document.document_id}`, { method: 'DELETE' })
-      setDocument(null)
+      await request(`/api/documents/${documentId}`, { method: 'DELETE' })
+      setDocuments((current) => current.filter((item) => item.document_id !== documentId))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not remove this document.')
     } finally {
@@ -100,26 +102,31 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
     }
   }
 
-  if (!restoring && document?.status === 'ready') {
-    return <DocumentChat document={document} token={token} error={error} onReplace={removeDocument} user={user} onLogout={onLogout} />
-  }
-
   return (
     <main className="app-shell">
       <WorkspaceHeader user={user} onLogout={onLogout} />
       <div className="workspace" id="top">
-        <WorkspaceSidebar document={document} />
+        <WorkspaceSidebar documents={documents} selectedDocumentId={null} onSelect={(item) => item.status === 'ready' && navigate(`/chat/${item.document_id}`)} />
         <section className="main-panel">
-          <div className="page-heading">
-            <div><div className="eyebrow">CONTRACT WORKSPACE</div><h1>Clarity, clause by clause.</h1><p>Upload a contract to prepare a private, searchable document index.</p></div>
-            <div className="secure-badge"><span>✳</span> Private document index</div>
+          <div className="page-heading dashboard-heading">
+            <div><div className="eyebrow">YOUR WORKSPACE</div><h1>Everything you need to read with confidence.</h1><p>Upload documents, then ask precise questions with every answer grounded in its source.</p></div>
+            <div className="secure-badge"><span>✳</span> Private by design</div>
+          </div>
+          <div className="dashboard-summary" aria-label="Workspace overview">
+            <div className="summary-item"><span className="summary-icon">▤</span><div><strong>{documents.length}</strong><span>Uploaded documents</span></div></div>
+            <div className="summary-item"><span className="summary-icon summary-icon-green">⌁</span><div><strong>{documents.reduce((total, item) => total + (item.indexed_chunks ?? 0), 0)}</strong><span>Indexed passages</span></div></div>
+            <div className="summary-item summary-note"><span className="summary-icon summary-icon-amber">◌</span><div><strong>{documents.filter((item) => item.status === 'ready').length} ready</strong><span>Available to chat</span></div></div>
           </div>
           {restoring
             ? <div className="document-restore" role="status"><span className="spinner" /> Loading your document…</div>
-            : document
-            ? <DocumentProcessingCard document={document} removing={removing} onRemove={removeDocument} />
-            : <UploadCard busy={busy} error={error} onUpload={upload} />}
-          {document && error && <div className="inline-error" role="alert">{error}</div>}
+            : <>
+              <div className="document-grid">
+                {documents.map((item) => <DocumentProcessingCard key={item.document_id} document={item} removing={removing} onRemove={() => removeDocument(item.document_id)} onOpenChat={() => navigate(`/chat/${item.document_id}`)} />)}
+                <UploadCard busy={busy} error={error} onUpload={upload} />
+              </div>
+              {documents.length === 0 && <div className="dashboard-next-step"><span className="next-step-number">01</span><div><strong>Your first document starts here</strong><span>Contracts, briefs, policies, and other PDF or DOCX files up to 25 MB.</span></div><span className="next-step-arrow">→</span></div>}
+            </>}
+          {error && <div className="inline-error" role="alert">{error}</div>}
           <footer className="page-footer"><span>ELCARA CONTRACT INTELLIGENCE</span><span>Built for careful reading <b>·</b> v0.1</span></footer>
         </section>
       </div>

@@ -20,6 +20,7 @@ export type UploadedDocument = {
   chunk_count?: number | null
   indexed_chunks: number
   error?: string | null
+  created_at?: string
 }
 
 export type ChatCitation = {

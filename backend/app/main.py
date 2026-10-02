@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import AsyncMongoClient
+from pymongo.errors import OperationFailure
 
 from app.config import cors_origins, database_name, required_setting
 from app.routers import auth, chat, documents
@@ -23,11 +24,13 @@ async def lifespan(app: FastAPI):
         await app.state.database.revoked_tokens.create_index(
             "expires_at", expireAfterSeconds=0, name="revoked_token_expiry"
         )
+        try:
+            await app.state.database.documents.drop_index("one_active_document_per_owner")
+        except OperationFailure:
+            pass
         await app.state.database.documents.create_index(
-            "owner_id",
-            unique=True,
-            partialFilterExpression={"active": True},
-            name="one_active_document_per_owner",
+            [("owner_id", 1), ("active", 1), ("created_at", -1)],
+            name="active_documents_by_owner",
         )
         await app.state.database.documents.create_index(
             [("document_id", 1), ("owner_id", 1)],

@@ -4,9 +4,10 @@ type DocumentProcessingCardProps = {
   document: UploadedDocument
   removing: boolean
   onRemove: () => void
+  onOpenChat: () => void
 }
 
-function DocumentProcessingCard({ document, removing, onRemove }: DocumentProcessingCardProps) {
+function DocumentProcessingCard({ document, removing, onRemove, onOpenChat }: DocumentProcessingCardProps) {
   const failed = document.status === 'failed'
   const ready = document.status === 'ready'
   const progress = Math.max(0, Math.min(100, document.progress ?? 0))
@@ -29,6 +30,7 @@ function DocumentProcessingCard({ document, removing, onRemove }: DocumentProces
       {failed && <div className="error-message processing-error" role="alert">{document.error || 'Please check your service settings and try again.'}</div>}
       {ready && <p className="ready-note">Your document is indexed privately and ready for questions.</p>}
       <div className="processing-actions">
+        {ready && <button className="primary-button processing-chat-button" onClick={onOpenChat}>Open document chat <span>→</span></button>}
         {(ready || failed) && <button className="text-button" onClick={onRemove} disabled={removing}>{removing ? 'Removing…' : 'Remove document'}</button>}
       </div>
       {!ready && !failed && <p className="processing-footnote">You can keep this page open. Progress updates automatically.</p>}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { GuestOnly, ProtectedRoute } from './components/RouteGuards'
 import WorkspacePage from './pages/WorkspacePage'
+import ChatPage from './pages/ChatPage'
 import type { AuthSession, User } from './types'
 
 const TOKEN_KEY = 'elcara_access_token'
@@ -69,6 +70,14 @@ function App() {
         element={(
           <ProtectedRoute user={user} restoring={restoring}>
             {user && <WorkspacePage user={user} token={token} onLogout={logout} />}
+          </ProtectedRoute>
+        )}
+      />
+      <Route
+        path="/chat/:id"
+        element={(
+          <ProtectedRoute user={user} restoring={restoring}>
+            {user && <ChatPage user={user} token={token} onLogout={logout} />}
           </ProtectedRoute>
         )}
       />

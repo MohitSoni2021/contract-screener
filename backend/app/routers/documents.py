@@ -56,15 +56,6 @@ async def upload_document(
     extension = Path(original_name).suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=415, detail="Only PDF and DOCX files are supported.")
-    existing = await database.documents.find_one(
-        {"owner_id": user.id, "active": True}, {"_id": 0, "status": 1}
-    )
-    if existing:
-        message = "Remove the current document before uploading a replacement."
-        if existing.get("status") in IN_PROGRESS_STATUSES:
-            message = "Your document is still processing. Wait for it to finish before replacing it."
-        raise HTTPException(status_code=409, detail=message)
-
     document_id = str(uuid4())
     user_upload_dir = UPLOAD_DIR / user.id
     saved_path = user_upload_dir / f"{document_id}{extension}"
@@ -118,8 +109,20 @@ async def upload_document(
         await database.documents.insert_one(record)
     except DuplicateKeyError:
         saved_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=409, detail="Remove the current document before uploading a replacement.") from None
+        raise HTTPException(status_code=409, detail="This document could not be added. Please try again.") from None
     return _public_document(record) or {}
+
+
+@router.get("")
+async def list_documents(
+    user: AuthenticatedUser = Depends(get_current_user),
+    database: Any = Depends(get_database),
+) -> dict[str, Any]:
+    cursor = database.documents.find(
+        {"owner_id": user.id, "active": True}, {"_id": 0}
+    ).sort("created_at", -1)
+    documents = await cursor.to_list(length=100)
+    return {"documents": [_public_document(document) for document in documents]}
 
 
 @router.get("/current")

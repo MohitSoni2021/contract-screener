@@ -33,7 +33,7 @@ The API checks MongoDB connectivity and creates user, token, and one-active-docu
 ## Document lifecycle
 
 - `POST /api/documents` — authenticated multipart upload; accepts PDF/DOCX up to the configured upload limit and returns a queued document record immediately.
-- `GET /api/documents/current` — returns the authenticated user's active document, if any.
+- `GET /api/documents` — returns the authenticated user's active documents.
 - `GET /api/documents/{document_id}` — returns extraction/indexing stage and progress, scoped to the owner.
 - `GET /api/documents/{document_id}/conversations` — lists saved chats for the active document.
 - `GET /api/conversations/{conversation_id}` — reopens one saved conversation for its owner.
