@@ -15,6 +15,12 @@ type WorkspacePageProps = {
   onLogout: () => void
 }
 
+type ApiResponse = {
+  detail?: string
+  document?: UploadedDocument | null
+  [key: string]: unknown
+}
+
 function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
   const [document, setDocument] = useState<UploadedDocument | null>(null)
   const [restoring, setRestoring] = useState(true)
@@ -28,8 +34,12 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
       headers: { Authorization: `Bearer ${token}`, ...init.headers },
     })
     if (response.status === 204) return null
-    const result = await response.json()
-    if (!response.ok) throw new Error(result.detail ?? 'The request could not be completed.')
+    const body = await response.text()
+    let result: ApiResponse = {}
+    if (body) {
+      try { result = JSON.parse(body) as ApiResponse } catch { /* Some proxies return plain-text errors. */ }
+    }
+    if (!response.ok) throw new Error(result.detail ?? (body || 'The request could not be completed.'))
     return result
   }, [token])
 
@@ -45,7 +55,7 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
   useEffect(() => {
     let cancelled = false
     request('/api/documents/current')
-      .then((result) => { if (!cancelled) setDocument(result.document as UploadedDocument | null) })
+      .then((result) => { if (!cancelled) setDocument((result?.document as UploadedDocument | null) ?? null) })
       .catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load your document.') })
       .finally(() => { if (!cancelled) setRestoring(false) })
     return () => { cancelled = true }

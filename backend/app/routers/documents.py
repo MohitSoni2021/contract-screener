@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -12,6 +13,7 @@ from app.dependencies import AuthenticatedUser, get_current_user, get_database
 from app.services.qdrant_repository import create_qdrant_client, delete_document_vectors
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
+logger = logging.getLogger(__name__)
 UPLOAD_DIR = BACKEND_DIR / "data" / "uploads"
 ALLOWED_EXTENSIONS = {".pdf", ".docx"}
 IN_PROGRESS_STATUSES = {"queued", "extracting", "chunking", "embedding", "indexing"}
@@ -171,7 +173,12 @@ async def delete_document(
 
     qdrant = create_qdrant_client()
     try:
-        await delete_document_vectors(qdrant, owner_id=user.id, document_id=document_id)
+        try:
+            await delete_document_vectors(qdrant, owner_id=user.id, document_id=document_id)
+        except Exception:
+            # The document is marked inactive below, so stale vectors remain unreachable
+            # through the mandatory active/owner/document Qdrant filter.
+            logger.exception("Could not remove document vectors", extra={"document_id": document_id})
     finally:
         await qdrant.close()
     Path(document["stored_path"]).unlink(missing_ok=True)

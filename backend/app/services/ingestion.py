@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import asyncio
+import logging
 
 from openai import AsyncOpenAI
 
@@ -16,8 +17,10 @@ from app.services.qdrant_repository import (
     ensure_collection,
     make_point,
 )
+from app.services.structure import extract_structure
 
 EMBEDDING_BATCH_SIZE = 64
+logger = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
@@ -59,6 +62,7 @@ async def ingest_document(database: Any, document: dict[str, Any], file_path: Pa
         await _set_status(
             database, document_id, status="chunking", stage="Preparing document sections", progress=22,
             page_count=extracted.page_count, canonical_text=extracted.text,
+            structure=extract_structure(extracted.text, extracted.blocks),
         )
         chunks = chunk_document(extracted.text, extracted.blocks)
         if not chunks:
@@ -98,6 +102,7 @@ async def ingest_document(database: Any, document: dict[str, Any], file_path: Pa
             indexed_chunks=len(chunks), completed_at=_now(),
         )
     except Exception as exc:
+        logger.exception("Document ingestion failed", extra={"document_id": document_id})
         try:
             await delete_document_vectors(
                 qdrant, owner_id=document["owner_id"], document_id=document_id
@@ -106,7 +111,13 @@ async def ingest_document(database: Any, document: dict[str, Any], file_path: Pa
             pass
         await _set_status(
             database, document_id, status="failed", stage="Processing failed", progress=0,
-            error=str(exc) if isinstance(exc, ValueError) else "We could not process this document. Check the service settings and try again.",
+            error=(
+                str(exc)
+                if isinstance(exc, ValueError)
+                else f"{type(exc).__name__}: {exc}"
+                if str(exc)
+                else f"{type(exc).__name__}: ingestion service error"
+            ),
         )
     finally:
         if embedding_client is not None:

@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import re
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -21,6 +22,8 @@ from app.services.qdrant_repository import collection_name, create_qdrant_client
 router = APIRouter(prefix="/api", tags=["chat"])
 logger = logging.getLogger(__name__)
 TOP_K = 6
+BROAD_MAX_SOURCES = 18
+CONTENTS_MAX_SOURCES = 8
 HISTORY_MESSAGE_LIMIT = 12
 MAX_HISTORY_CHARACTERS = 16_000
 MAX_QUESTION_CHARACTERS = 6_000
@@ -51,7 +54,16 @@ def _event(name: str, data: dict[str, Any]) -> str:
 
 
 def _normalized_text(value: str) -> str:
-    return WHITESPACE.sub(" ", value).strip().casefold()
+    return WHITESPACE.sub(" ", unicodedata.normalize("NFKC", value)).strip().casefold()
+
+
+def _question_mode(question: str) -> str:
+    value = question.casefold()
+    if re.search(r"\b(table of contents|contents page|book index|list down the index|index of the book|index)\b", value):
+        return "contents"
+    if re.search(r"\b(all|every|overall|whole document|entire document|overview|brief|summary|summarize|key points|important points|main points)\b", value):
+        return "broad"
+    return "focused"
 
 
 async def _owned_ready_document(database: Any, user_id: str, document_id: str) -> dict[str, Any]:
@@ -109,8 +121,17 @@ async def _retrieve_sources(
         with_payload=True,
     )
 
+    return _verified_sources(document, canonical_text, response.points)
+
+
+def _verified_sources(
+    document: dict[str, Any],
+    canonical_text: str,
+    points: list[Any],
+) -> list[dict[str, Any]]:
+
     sources: list[dict[str, Any]] = []
-    for point in response.points:
+    for point in points:
         payload = point.payload or {}
         source_text = payload.get("text")
         char_start = payload.get("char_start")
@@ -147,10 +168,75 @@ async def _retrieve_sources(
             "block_end": payload.get("block_end"),
             "char_start": char_start,
             "char_end": char_end,
-            "score": float(point.score),
+            "score": float(getattr(point, "score", 0.0) or 0.0) or None,
             "verified": True,
         })
     return sources
+
+
+async def _retrieve_broad_sources(
+    *, document: dict[str, Any], canonical_text: str, qdrant: AsyncQdrantClient,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    response, _ = await qdrant.scroll(
+        collection_name=collection_name(),
+        scroll_filter=document_scope(
+            document["owner_id"], document["document_id"], active_only=True,
+            index_version=int(document.get("index_version", 1)),
+        ),
+        limit=1000,
+        with_payload=True,
+        with_vectors=False,
+    )
+    verified = _verified_sources(document, canonical_text, response)
+    if not verified:
+        return [], {"mode": "broad", "complete": False, "sections": 0, "source_count": 0}
+
+    # Pick evenly distributed chunks so a long answer has document coverage instead of
+    # repeating neighboring passages from one semantic cluster.
+    selected: list[dict[str, Any]] = []
+    step = max(1, len(verified) // BROAD_MAX_SOURCES)
+    for source in verified[::step][:BROAD_MAX_SOURCES]:
+        selected.append(source)
+    page_ranges = {(item["page_start"], item["page_end"]) for item in selected if item["page_start"] is not None}
+    structure = document.get("structure") or {}
+    return selected, {
+        "mode": "broad",
+        "complete": len(selected) >= min(BROAD_MAX_SOURCES, len(verified)),
+        "sections": len(structure.get("headings", [])) if isinstance(structure, dict) else 0,
+        "source_count": len(selected),
+        "page_ranges": len(page_ranges),
+    }
+
+
+async def _retrieve_contents_sources(
+    *, document: dict[str, Any], canonical_text: str, qdrant: AsyncQdrantClient,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    response, _ = await qdrant.scroll(
+        collection_name=collection_name(),
+        scroll_filter=document_scope(
+            document["owner_id"], document["document_id"], active_only=True,
+            index_version=int(document.get("index_version", 1)),
+        ),
+        limit=1000,
+        with_payload=True,
+        with_vectors=False,
+    )
+    contents = (document.get("structure") or {}).get("contents", "")
+    if not contents:
+        return [], {
+            "mode": "contents", "complete": False,
+            "sections": len((document.get("structure") or {}).get("headings", [])),
+            "source_count": 0,
+        }
+    candidates = [point for point in response if isinstance(point.payload, dict)]
+    terms = {term for term in re.findall(r"[a-z0-9]{4,}", contents.casefold())}
+    candidates.sort(key=lambda point: sum(term in str(point.payload.get("text", "")).casefold() for term in terms), reverse=True)
+    sources = _verified_sources(document, canonical_text, candidates[:CONTENTS_MAX_SOURCES])
+    return sources, {
+        "mode": "contents", "complete": bool(contents and sources),
+        "sections": len((document.get("structure") or {}).get("headings", [])),
+        "source_count": len(sources),
+    }
 
 
 async def _conversation_history(database: Any, conversation_id: str) -> list[dict[str, str]]:
@@ -194,6 +280,7 @@ async def _send_message_events(
     qdrant: AsyncQdrantClient | None = None
     stream: Any = None
     citations: list[dict[str, Any]] = []
+    coverage: dict[str, Any] = {}
 
     yield _event("conversation", {"conversation_id": conversation_id})
     try:
@@ -201,20 +288,30 @@ async def _send_message_events(
         canonical_text = await _canonical_text(database, document)
         ai_client = create_ai_client()
         qdrant = create_qdrant_client()
-        sources = await _retrieve_sources(
-            document=document,
-            question=question,
-            canonical_text=canonical_text,
-            ai_client=ai_client,
-            qdrant=qdrant,
-        )
+        mode = _question_mode(question)
+        if mode == "broad":
+            sources, coverage = await _retrieve_broad_sources(
+                document=document, canonical_text=canonical_text, qdrant=qdrant,
+            )
+        elif mode == "contents":
+            sources, coverage = await _retrieve_contents_sources(
+                document=document, canonical_text=canonical_text, qdrant=qdrant,
+            )
+        else:
+            sources = await _retrieve_sources(
+                document=document, question=question, canonical_text=canonical_text,
+                ai_client=ai_client, qdrant=qdrant,
+            )
+            coverage = {"mode": "focused", "complete": bool(sources), "source_count": len(sources)}
+        yield _event("coverage", coverage)
 
         if not sources:
-            full_answer = (
-                "I couldn't verify an answer in the passages retrieved from this document. "
-                "Because this is a semantic search across a long document, that does not prove "
-                "the information is absent. Try a more specific question or a clause heading."
-            )
+            if mode == "contents":
+                full_answer = "I couldn't find a reliable table of contents or index in this document. I won't invent one."
+            elif mode == "broad":
+                full_answer = "I couldn't establish a document-wide answer from the extracted passages. The document coverage is incomplete."
+            else:
+                full_answer = "I couldn't verify an answer in the passages retrieved from this document. That does not prove the information is absent."
             for token in full_answer.split(" "):
                 delta = token + " "
                 yield _event("token", {"text": delta})
@@ -222,7 +319,7 @@ async def _send_message_events(
             assistant_status = "complete"
             await database.messages.update_one(
                 {"message_id": assistant_message_id},
-                {"$set": {"content": full_answer, "status": assistant_status, "updated_at": _now()}},
+                {"$set": {"content": full_answer, "status": assistant_status, "citations": [], "coverage": coverage, "updated_at": _now()}},
             )
             await database.conversations.update_one(
                 {"conversation_id": conversation_id}, {"$set": {"updated_at": _now()}}
@@ -243,6 +340,9 @@ async def _send_message_events(
             "could not establish it from the retrieved passages. Never claim that a clause is absent from the "
             "whole document based only on semantic search; state that the search may not have found it. "
             "Do not fabricate or paraphrase text as a quotation. The application will show verified source text.\n\n"
+            f"Retrieval mode: {mode}. Coverage metadata: {json.dumps(coverage, separators=(',', ':'))}. "
+            "For broad questions, describe the covered sections or page ranges and call the answer partial "
+            "when coverage is incomplete. For contents questions, reproduce only contents supported by the passages.\n\n"
             f"Retrieved passages:\n{evidence}\n\nUser question:\n{question}"
         )
         messages = [
@@ -290,12 +390,18 @@ async def _send_message_events(
             lambda match: match.group(0) if match.group(1) in valid_ids else "",
             full_answer,
         ).strip()
+        if assistant_status == "complete" and not citations and filtered_answer:
+            filtered_answer = (
+                "I couldn't establish a supported answer from the retrieved passages. "
+                "No verified source passage was selected for the generated answer."
+            )
         await database.messages.update_one(
             {"message_id": assistant_message_id},
             {"$set": {
                 "content": filtered_answer,
                 "status": assistant_status,
                 "citations": citations,
+                "coverage": coverage,
                 "updated_at": _now(),
             }},
         )
@@ -303,16 +409,18 @@ async def _send_message_events(
             {"conversation_id": conversation_id}, {"$set": {"updated_at": _now()}}
         )
         yield _event("citations", {"items": citations})
+        yield _event("coverage", coverage)
         yield _event("done", {
             "message_id": assistant_message_id,
             "status": assistant_status,
             "content": filtered_answer,
+            "coverage": coverage,
         })
     except asyncio.CancelledError:
         assistant_status = "cancelled"
         await database.messages.update_one(
             {"message_id": assistant_message_id},
-            {"$set": {"content": full_answer, "status": "cancelled", "citations": citations, "updated_at": _now()}},
+            {"$set": {"content": full_answer, "status": "cancelled", "citations": citations, "coverage": coverage, "updated_at": _now()}},
         )
         await database.conversations.update_one(
             {"conversation_id": conversation_id}, {"$set": {"updated_at": _now()}}
@@ -329,6 +437,7 @@ async def _send_message_events(
                 "content": full_answer,
                 "status": "failed",
                 "citations": citations,
+                "coverage": coverage,
                 "updated_at": _now(),
             }},
         )
@@ -375,7 +484,7 @@ async def get_conversation(
     await _owned_ready_document(database, user.id, conversation["document_id"])
     messages = await database.messages.find(
         {"conversation_id": conversation_id, "owner_id": user.id},
-        {"_id": 0, "message_id": 1, "role": 1, "content": 1, "status": 1, "citations": 1, "created_at": 1},
+        {"_id": 0, "message_id": 1, "role": 1, "content": 1, "status": 1, "citations": 1, "coverage": 1, "created_at": 1},
     ).sort("created_at", 1).limit(500).to_list(length=500)
     for item in messages:
         item["created_at"] = item["created_at"].isoformat()

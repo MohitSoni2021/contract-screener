@@ -41,7 +41,16 @@ export type ChatMessage = {
   content: string
   status: 'complete' | 'streaming' | 'partial' | 'cancelled' | 'failed'
   citations: ChatCitation[]
+  coverage?: ChatCoverage
   created_at?: string
+}
+
+export type ChatCoverage = {
+  mode: 'focused' | 'broad' | 'contents'
+  complete: boolean
+  source_count: number
+  sections?: number
+  page_ranges?: number
 }
 
 export type ChatConversation = {

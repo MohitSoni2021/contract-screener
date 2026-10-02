@@ -1,5 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
-import type { ChatCitation, ChatConversation, ChatMessage, UploadedDocument, User } from '../types'
+import type { ChatCitation, ChatConversation, ChatCoverage, ChatMessage, UploadedDocument, User } from '../types'
 import Brand from './Brand'
 
 const PdfCitationViewer = lazy(() => import('./PdfCitationViewer'))
@@ -19,6 +19,11 @@ type StreamEvent = {
   message?: string
   text?: string
   items?: ChatCitation[]
+  mode?: ChatCoverage['mode']
+  complete?: boolean
+  source_count?: number
+  sections?: number
+  page_ranges?: number
   message_id?: string
   status?: ChatMessage['status']
   content?: string
@@ -209,6 +214,12 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
             ? { ...item, citations: items }
             : item))
         }
+        if (event === 'coverage') {
+          const coverage = data as ChatCoverage
+          setMessages((current) => current.map((item) => item.message_id === assistantMessageId
+            ? { ...item, coverage }
+            : item))
+        }
         if (event === 'done') {
           setMessages((current) => current.map((item) => item.message_id === assistantMessageId
             ? { ...item, content: data.content ?? item.content, status: data.status ?? 'complete' }
@@ -302,10 +313,16 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
                   {message.role === 'assistant' ? renderAnswer(message, (citation) => revealCitation(message.message_id, citation)) : message.content}
                   {message.status === 'streaming' && <span className="ml-1 inline-block h-4 w-1 animate-pulse rounded-sm bg-[#579070] align-middle" aria-label="Answer streaming" />}
                 </div>
-                {message.role === 'assistant' && message.citations.length > 0 && (
+                {message.role === 'assistant' && message.coverage && message.coverage.mode !== 'focused' && (
+                  <div className={`coverage-note ${message.coverage.complete ? '' : 'coverage-partial'}`}>
+                    {message.coverage.complete ? 'Coverage checked' : 'Partial coverage'} · {message.coverage.source_count} verified passages
+                    {message.coverage.page_ranges ? ` · ${message.coverage.page_ranges} page ranges` : ''}
+                  </div>
+                )}
+                {message.role === 'assistant' && message.citations.some((citation) => citation.verified) && (
                   <div className="message-citations" aria-label="Verified document sources">
                     <div className="citation-heading">VERIFIED SOURCES</div>
-                    {message.citations.map((citation) => (
+                    {message.citations.filter((citation) => citation.verified).map((citation) => (
                       <div className="citation-card" id={`citation-${message.message_id}-${citation.source_id}`} key={citation.source_id}>
                         <details>
                           <summary><span className="citation-check">✓</span> {citation.source_id} · {citationLocation(citation, isPdf)}</summary>
@@ -374,7 +391,7 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
 }
 
 function renderAnswer(message: ChatMessage, onCitationClick: (citation: ChatCitation) => void) {
-  const citationMap = new Map(message.citations.map((citation) => [citation.source_id, citation]))
+  const citationMap = new Map(message.citations.filter((citation) => citation.verified).map((citation) => [citation.source_id, citation]))
   const parts = message.content.split(SOURCE_MARKER)
   return parts.map((part, index) => {
     const citation = citationMap.get(part)

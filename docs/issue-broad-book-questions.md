@@ -1,6 +1,6 @@
 # Issue: Broad questions over long PDFs return incomplete answers
 
-**Status:** Root cause identified; fix proposed  
+**Status:** Retrieval fix implemented; hierarchical summaries remain a future enhancement
 **Area:** Document ingestion, retrieval, and chat
 
 ## Observed behavior
@@ -54,6 +54,17 @@ Track which sections or page ranges contributed to a broad answer. Return citati
 - No summary or retrieval result can cross owner or document boundaries.
 - Incomplete extraction or summary processing is reported as partial coverage; the system does not claim an exhaustive answer without evidence of coverage.
 - Focused questions continue to use the existing low-latency passage retrieval path.
+
+## Implemented baseline
+
+- Ingestion now persists a versioned, evidence-derived outline and detected contents text with the document.
+- Broad questions use owner/document/index-version filtered Qdrant scroll retrieval with evenly distributed verified passages, and report coverage metadata as complete or partial.
+- Contents and index questions use the extracted contents passages and explicitly refuse to invent a contents list when none was found.
+- Focused questions retain the six-passage dense retrieval path.
+- Citations are normalized with Unicode and whitespace tolerance, recomputed from canonical text, and the UI only renders citations marked verified.
+- Completed generated answers without a valid source marker are replaced with an explicit unsupported-answer response.
+
+This baseline does not yet generate persisted map/reduce summaries. It therefore reports passage/page coverage and partial status rather than claiming exhaustive section-level comprehension when the extracted outline or index is incomplete.
 
 ## Relevant implementation locations
 
