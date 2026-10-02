@@ -158,22 +158,27 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
   useEffect(() => {
     if (!selectedCitation && !originalDocumentOpen) {
       setSourceUrl('')
+      setSourceLoading(false)
       return
     }
     const controller = new AbortController()
+    let active = true
     let objectUrl = ''
+    setSourceUrl('')
     setSourceLoading(true)
     api(`/api/documents/${document.document_id}/file`, { signal: controller.signal })
       .then((response) => response.blob())
       .then((blob) => {
+        if (!active) return
         objectUrl = URL.createObjectURL(blob)
         setSourceUrl(objectUrl)
       })
       .catch((cause) => {
-        if (!(cause instanceof Error && cause.name === 'AbortError')) setChatError('The original PDF could not be opened.')
+        if (active && !(cause instanceof Error && cause.name === 'AbortError')) setChatError('The original PDF could not be opened.')
       })
-      .finally(() => setSourceLoading(false))
+      .finally(() => { if (active) setSourceLoading(false) })
     return () => {
+      active = false
       controller.abort()
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
