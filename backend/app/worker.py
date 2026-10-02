@@ -26,6 +26,7 @@ async def _claim_document(database, worker_id: str) -> dict | None:
     now = _now()
     return await database.documents.find_one_and_update(
         {
+            "active": True,
             "$or": [
                 {"status": "queued"},
                 {

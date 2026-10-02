@@ -49,6 +49,15 @@ The repository includes a Vite + React + TypeScript frontend in `frontend/` and 
 
 ### Start the API
 
+Start Qdrant once from the repository root before starting the API or worker:
+
+```bash
+docker compose up -d qdrant
+curl http://localhost:6333/healthz
+```
+
+Then start the API:
+
 ```bash
 cd backend
 python -m venv .venv

@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 logger = logging.getLogger(__name__)
 UPLOAD_DIR = BACKEND_DIR / "data" / "uploads"
 ALLOWED_EXTENSIONS = {".pdf", ".docx"}
-IN_PROGRESS_STATUSES = {"queued", "extracting", "chunking", "embedding", "indexing"}
+IN_PROGRESS_STATUSES = {"extracting", "chunking", "embedding", "indexing"}
 
 
 def _public_document(document: dict[str, Any] | None) -> dict[str, Any] | None:

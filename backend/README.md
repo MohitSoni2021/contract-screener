@@ -12,7 +12,14 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Set `MONGODB_URI`, `JWT_SECRET_KEY`, and `OPENROUTER_API_KEY` in `backend/.env`. Embedding and chat requests use the OpenAI Python SDK pointed at OpenRouter's OpenAI-compatible endpoint. `OPENROUTER_BASE_URL` defaults to `https://openrouter.ai/api/v1`; `OPENROUTER_EMBEDDING_MODEL` or the legacy `OPENAI_EMBEDDING_MODEL` defaults to `openai/text-embedding-3-small`; `OPENROUTER_CHAT_MODEL` or `OPENAI_CHAT_MODEL` defaults to `openai/gpt-4o-mini`. Change these to models supported by your provider account if needed. Ingestion limits are configurable with `MAX_PDF_PAGES` (default 600), `MAX_UPLOAD_BYTES` (25 MiB), `MAX_EXTRACTED_CHARACTERS` (3 million), and `MAX_EXTRACTED_TEXT_BYTES` (12 MiB). Start Qdrant at the configured `QDRANT_URL` (default `http://localhost:6333`), then run the API:
+Set `MONGODB_URI`, `JWT_SECRET_KEY`, and `OPENROUTER_API_KEY` in `backend/.env`. Embedding and chat requests use the OpenAI Python SDK pointed at OpenRouter's OpenAI-compatible endpoint. `OPENROUTER_BASE_URL` defaults to `https://openrouter.ai/api/v1`; `OPENROUTER_EMBEDDING_MODEL` or the legacy `OPENAI_EMBEDDING_MODEL` defaults to `openai/text-embedding-3-small`; `OPENROUTER_CHAT_MODEL` or `OPENAI_CHAT_MODEL` defaults to `openai/gpt-4o-mini`. Change these to models supported by your provider account if needed. Ingestion limits are configurable with `MAX_PDF_PAGES` (default 600), `MAX_UPLOAD_BYTES` (25 MiB), `MAX_EXTRACTED_CHARACTERS` (3 million), and `MAX_EXTRACTED_TEXT_BYTES` (12 MiB). From the repository root, start the included Qdrant service and verify it is reachable:
+
+```bash
+docker compose up -d qdrant
+curl http://localhost:6333/healthz
+```
+
+Qdrant uses a named Docker volume so indexed vectors survive container restarts. Then run the API:
 
 ```bash
 uvicorn main:app --reload --port 8000

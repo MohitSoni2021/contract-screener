@@ -335,6 +335,45 @@ body {
   align-items: stretch;
   gap: 16px;
 }
+.processing-removal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(24, 43, 34, 0.28);
+}
+.processing-removal-dialog {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  width: min(100%, 430px);
+  padding: 22px;
+  border: 1px solid #dce8e0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 20px 55px rgba(25, 54, 39, 0.18);
+  color: #30483b;
+}
+.processing-removal-dialog .spinner {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.processing-removal-dialog strong {
+  display: block;
+  font: 600 15px Manrope, sans-serif;
+}
+.processing-removal-dialog p {
+  margin: 6px 0 7px;
+  color: #718078;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.processing-removal-dialog small {
+  color: #477765;
+  font-size: 11px;
+}
 .route-error {
   display: grid;
   min-height: 100vh;
