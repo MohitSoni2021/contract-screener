@@ -145,14 +145,15 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
   }, [messages, stageMessage])
 
   const activeAssistant = [...messages].reverse().find((message) => message.role === 'assistant')
-  const verifiedCitations = activeAssistant?.citations.filter((citation) => citation.verified) ?? []
+  const verifiedCitations = activeAssistant?.citations?.filter((citation) => citation.verified) ?? []
+  const allVerifiedCitations = messages.flatMap((message) => (message.citations ?? []).filter((citation) => citation.verified))
 
   useEffect(() => {
-    const selectedIsCurrent = selectedCitation
-      ? verifiedCitations.some((citation) => citation.chunk_id === selectedCitation.chunk_id)
+    const selectedIsLoaded = selectedCitation
+      ? allVerifiedCitations.some((citation) => citation.chunk_id === selectedCitation.chunk_id)
       : false
-    if (!selectedIsCurrent) setSelectedCitation(verifiedCitations[0] ?? null)
-  }, [conversationId, activeAssistant?.message_id, activeAssistant?.citations, selectedCitation, verifiedCitations])
+    if (!selectedIsLoaded) setSelectedCitation(verifiedCitations[0] ?? null)
+  }, [conversationId, activeAssistant?.message_id, activeAssistant?.citations, selectedCitation, allVerifiedCitations, verifiedCitations])
 
   useEffect(() => {
     if (!selectedCitation && !originalDocumentOpen) {
@@ -340,10 +341,10 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
                     {message.coverage.page_ranges ? ` · ${message.coverage.page_ranges} page ranges` : ''}
                   </div>
                 )}
-                {message.role === 'assistant' && message.citations.some((citation) => citation.verified) && (
+                {message.role === 'assistant' && (message.citations ?? []).some((citation) => citation.verified) && (
                   <div className="message-citations" aria-label="Verified document sources">
                     <div className="citation-heading">VERIFIED SOURCES</div>
-                    {message.citations.filter((citation) => citation.verified).map((citation) => (
+                    {(message.citations ?? []).filter((citation) => citation.verified).map((citation) => (
                       <div className="citation-card" id={`citation-${message.message_id}-${citation.source_id}`} key={citation.source_id}>
                         <details>
                           <summary><span className="citation-check">✓</span> {citation.source_id} · {citationLocation(citation, isPdf)}</summary>
@@ -437,7 +438,7 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
 }
 
 function renderAnswer(message: ChatMessage, onCitationClick: (citation: ChatCitation) => void) {
-  const citationMap = new Map(message.citations.filter((citation) => citation.verified).map((citation) => [citation.source_id, citation]))
+  const citationMap = new Map((message.citations ?? []).filter((citation) => citation.verified).map((citation) => [citation.source_id, citation]))
   const markdown = message.content.replace(SOURCE_MARKER, (_, sourceId: string) => `[${sourceId}](#verified-${sourceId})`)
   return <div className="markdown-answer">
     <ReactMarkdown
