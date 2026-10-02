@@ -86,6 +86,7 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
   const [stageMessage, setStageMessage] = useState('')
   const [chatError, setChatError] = useState('')
   const [selectedCitation, setSelectedCitation] = useState<ChatCitation | null>(null)
+  const [originalDocumentOpen, setOriginalDocumentOpen] = useState(false)
   const [sourceUrl, setSourceUrl] = useState('')
   const [sourceLoading, setSourceLoading] = useState(false)
   const controllerRef = useRef<AbortController | null>(null)
@@ -138,7 +139,7 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
   }, [messages, stageMessage])
 
   useEffect(() => {
-    if (!selectedCitation || !document.filename.toLowerCase().endsWith('.pdf')) {
+    if (!selectedCitation && !originalDocumentOpen) {
       setSourceUrl('')
       return
     }
@@ -159,7 +160,7 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
       controller.abort()
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [api, document.document_id, document.filename, selectedCitation])
+  }, [api, document.document_id, document.filename, originalDocumentOpen, selectedCitation])
 
 
   function startNewConversation() {
@@ -274,10 +275,10 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
         <button className="mt-5 flex w-full items-center justify-center gap-2 rounded-md bg-[#245d4d] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1b4d3f] disabled:opacity-50" onClick={startNewConversation} disabled={busy}>＋ <span>New conversation</span></button>
         <section className="mt-6 min-w-0" aria-label="Active source document">
           <div className="mb-2 px-1 text-[10px] font-bold tracking-[.14em] text-[#859188]">YOUR SOURCE</div>
-          <div className="flex min-w-0 items-start gap-3 rounded-lg border border-[#e7ece7] bg-[#fafbf9] p-3">
+          <button className="flex w-full min-w-0 items-start gap-3 rounded-lg border border-[#e7ece7] bg-[#fafbf9] p-3 text-left transition hover:border-[#bfd2c4] hover:bg-[#f5f9f5]" onClick={() => setOriginalDocumentOpen(true)}>
             <span className="rounded bg-[#f8e9e7] px-1.5 py-1 text-[9px] font-bold text-[#ad534b]">{isPdf ? 'PDF' : 'DOCX'}</span>
             <div className="min-w-0 flex-1"><p className="m-0 break-words text-xs font-semibold leading-5 text-[#33463b]" title={document.filename}>{document.filename}</p><p className="mt-1 flex items-center gap-1.5 text-[10px] text-[#688071]"><i className="h-1.5 w-1.5 rounded-full bg-[#619572]" /> Indexed and ready</p></div>
-          </div>
+          </button>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 px-1 text-[10px] text-[#78857c]"><span>{document.indexed_chunks.toLocaleString()} passages</span>{document.page_count != null && isPdf && <span>{document.page_count.toLocaleString()} pages</span>}</div>
           <p className="mt-3 px-1 text-[10px] leading-4 text-[#89958d]">Answers use this private document only.</p>
         </section>
@@ -361,27 +362,28 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
           <div className="shrink-0 px-3 pb-3 pt-1 text-center text-[9px] leading-4 text-[#929d95]">Answers are grounded in retrieved passages from this document. Verify important terms in the cited source.</div>
         </div>
       </div>
-      {selectedCitation && (
-        <div className="source-overlay" role="presentation" onClick={() => setSelectedCitation(null)}>
-          <section className="source-modal" role="dialog" aria-modal="true" aria-label="Verified source passage" onClick={(event) => event.stopPropagation()}>
+      {(selectedCitation || originalDocumentOpen) && (
+        <div className="source-overlay" role="presentation" onClick={() => { setSelectedCitation(null); setOriginalDocumentOpen(false) }}>
+          <section className={`source-modal ${originalDocumentOpen ? 'original-document-modal' : ''}`} role="dialog" aria-modal="true" aria-label={originalDocumentOpen ? 'Original document' : 'Verified source passage'} onClick={(event) => event.stopPropagation()}>
             <header className="source-modal-header">
-              <div><span className="eyebrow">VERIFIED SOURCE · {citationLocation(selectedCitation, isPdf)}</span><h2>Passage from {document.filename}</h2></div>
-              <button className="text-button" onClick={() => setSelectedCitation(null)}>Close</button>
+              <div><span className="eyebrow">{originalDocumentOpen ? 'ORIGINAL DOCUMENT' : `VERIFIED SOURCE · ${citationLocation(selectedCitation!, isPdf)}`}</span><h2>{originalDocumentOpen ? document.filename : `Passage from ${document.filename}`}</h2></div>
+              <button className="text-button" onClick={() => { setSelectedCitation(null); setOriginalDocumentOpen(false) }}>Close</button>
             </header>
-            <div className={`source-modal-body ${isPdf ? 'has-pdf' : ''}`}>
+            <div className={`source-modal-body ${isPdf ? 'has-pdf' : ''} ${originalDocumentOpen ? 'original-document-body' : ''}`}>
               {isPdf && (
                 <div className="source-pdf-viewer">
                   {sourceLoading && <div className="m-auto flex items-center gap-2 text-xs text-[#829087]" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" /> Opening the original PDF…</div>}
                   {sourceUrl && <Suspense fallback={<div className="m-auto flex items-center gap-2 text-xs text-[#829087]" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" /> Loading PDF viewer…</div>}>
-                    <PdfCitationViewer key={selectedCitation.chunk_id} sourceUrl={sourceUrl} citation={selectedCitation} />
+                    <PdfCitationViewer key={selectedCitation?.chunk_id ?? 'original-document'} sourceUrl={sourceUrl} citation={selectedCitation} />
                   </Suspense>}
                 </div>
               )}
-              <div className="source-quote-panel">
+              {!isPdf && originalDocumentOpen && <div className="source-quote-panel original-docx-panel"><div className="citation-heading">ORIGINAL DOCX FILE</div><p>This document format cannot be rendered inside the browser.</p>{sourceUrl ? <a className="text-button" href={sourceUrl} target="_blank" rel="noreferrer">Open original document</a> : <div className="text-xs text-[#829087]">Preparing the original file…</div>}</div>}
+              {selectedCitation && !originalDocumentOpen && <div className="source-quote-panel">
                 <div className="citation-heading">EXACT EXTRACTED TEXT</div>
                 <blockquote><mark>{selectedCitation.quote}</mark></blockquote>
                 <p>This passage was matched to the document text before it was shown.</p>
-              </div>
+              </div>}
             </div>
           </section>
         </div>

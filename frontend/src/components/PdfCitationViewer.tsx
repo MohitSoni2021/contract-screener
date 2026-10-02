@@ -7,12 +7,12 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.m
 
 type PdfCitationViewerProps = {
   sourceUrl: string
-  citation: ChatCitation
+  citation?: ChatCitation | null
 }
 
 export default function PdfCitationViewer({ sourceUrl, citation }: PdfCitationViewerProps) {
   const [pageCount, setPageCount] = useState(0)
-  const [page, setPage] = useState(citation.page_start ?? 1)
+  const [page, setPage] = useState(citation?.page_start ?? 1)
   const [width, setWidth] = useState(700)
   const viewerRef = useRef<HTMLDivElement>(null)
 
@@ -44,7 +44,7 @@ export default function PdfCitationViewer({ sourceUrl, citation }: PdfCitationVi
           pageNumber={page}
           width={Math.max(280, Math.min(width - 36, 760))}
           renderAnnotationLayer={false}
-          customTextRenderer={({ str }) => renderPdfText(str, citation.quote)}
+          customTextRenderer={({ str }) => citation ? renderPdfText(str, citation.quote) : escapeHtml(str)}
         />
       </PdfDocument>
     </div>
