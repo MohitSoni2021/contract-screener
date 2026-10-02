@@ -80,3 +80,11 @@ def qdrant_timeout_seconds() -> float:
     if not 1 <= value <= 300:
         raise RuntimeError("QDRANT_TIMEOUT_SECONDS must be between 1 and 300")
     return value
+
+
+def research_max_rounds() -> int:
+    return integer_setting("RESEARCH_MAX_ROUNDS", 4, minimum=1, maximum=8)
+
+
+def research_max_tokens() -> int:
+    return integer_setting("RESEARCH_MAX_TOKENS", 3200, minimum=500, maximum=12_000)

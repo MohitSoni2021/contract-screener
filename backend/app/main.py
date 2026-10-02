@@ -6,7 +6,7 @@ from pymongo import AsyncMongoClient
 from pymongo.errors import OperationFailure
 
 from app.config import cors_origins, database_name, required_setting
-from app.routers import auth, chat, documents
+from app.routers import auth, chat, documents, research
 
 
 @asynccontextmanager
@@ -66,6 +66,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(documents.router)
 app.include_router(chat.router)
+app.include_router(research.router)
 
 
 @app.get("/api/health")

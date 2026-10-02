@@ -82,6 +82,13 @@ function WorkspaceSidebar({
         <span className="sidebar-text">Compare documents</span>
       </button>
       <button
+        className={`nav-item ${location.pathname === "/research" ? "active" : ""}`}
+        onClick={() => navigate("/research")}
+      >
+        <span className="nav-icon">⌁</span>{" "}
+        <span className="sidebar-text">Agent research</span>
+      </button>
+      <button
         className="sidebar-add-button"
         onClick={() => fileInput.current?.click()}
       >

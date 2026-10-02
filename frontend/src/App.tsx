@@ -4,6 +4,7 @@ import { GuestOnly, ProtectedRoute } from './components/RouteGuards'
 import WorkspacePage from './pages/WorkspacePage'
 import ChatPage from './pages/ChatPage'
 import CompareDocPage from './pages/CompareDocPage'
+import ResearchPage from './pages/ResearchPage'
 import type { AuthSession, User } from './types'
 
 const TOKEN_KEY = 'elcara_access_token'
@@ -87,6 +88,14 @@ function App() {
         element={(
           <ProtectedRoute user={user} restoring={restoring}>
             {user && <CompareDocPage user={user} token={token} onLogout={logout} />}
+          </ProtectedRoute>
+        )}
+      />
+      <Route
+        path="/research"
+        element={(
+          <ProtectedRoute user={user} restoring={restoring}>
+            {user && <ResearchPage user={user} token={token} onLogout={logout} />}
           </ProtectedRoute>
         )}
       />
