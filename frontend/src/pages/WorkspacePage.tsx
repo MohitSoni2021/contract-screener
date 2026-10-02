@@ -90,6 +90,10 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
     }
   }
 
+  if (!restoring && document?.status === 'ready') {
+    return <DocumentChat document={document} token={token} error={error} onReplace={removeDocument} user={user} onLogout={onLogout} />
+  }
+
   return (
     <main className="app-shell">
       <WorkspaceHeader user={user} onLogout={onLogout} />
@@ -102,8 +106,6 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
           </div>
           {restoring
             ? <div className="document-restore" role="status"><span className="spinner" /> Loading your document…</div>
-            : document?.status === 'ready'
-            ? <DocumentChat document={document} token={token} error={error} onReplace={removeDocument} />
             : document
             ? <DocumentProcessingCard document={document} removing={removing} onRemove={removeDocument} />
             : <UploadCard busy={busy} error={error} onUpload={upload} />}

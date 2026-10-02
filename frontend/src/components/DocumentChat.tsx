@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
-import type { ChatCitation, ChatConversation, ChatMessage, UploadedDocument } from '../types'
+import type { ChatCitation, ChatConversation, ChatMessage, UploadedDocument, User } from '../types'
+import Brand from './Brand'
 
 const PdfCitationViewer = lazy(() => import('./PdfCitationViewer'))
 
@@ -8,6 +9,8 @@ type DocumentChatProps = {
   token: string
   error: string
   onReplace: () => void
+  user: User
+  onLogout: () => void
 }
 
 type StreamEvent = {
@@ -68,7 +71,7 @@ function citationLocation(citation: ChatCitation, isPdf: boolean) {
   return 'Document passage'
 }
 
-function DocumentChat({ document, token, error, onReplace }: DocumentChatProps) {
+function DocumentChat({ document, token, error, onReplace, user, onLogout }: DocumentChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [conversationId, setConversationId] = useState<string | null>(null)
@@ -82,7 +85,7 @@ function DocumentChat({ document, token, error, onReplace }: DocumentChatProps) 
   const [sourceLoading, setSourceLoading] = useState(false)
   const controllerRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const historyRef = useRef<HTMLDetailsElement>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const api = useCallback(async (path: string, init: RequestInit = {}) => {
     const response = await fetch(path, {
@@ -102,7 +105,7 @@ function DocumentChat({ document, token, error, onReplace }: DocumentChatProps) 
     setConversationId(id)
     setMessages(result.messages as ChatMessage[])
     setChatError('')
-    if (historyRef.current) historyRef.current.open = false
+    if (window.matchMedia('(max-width: 1023px)').matches) setSidebarOpen(false)
   }, [api])
 
   const loadConversations = useCallback(async (openLatest: boolean) => {
@@ -160,7 +163,7 @@ function DocumentChat({ document, token, error, onReplace }: DocumentChatProps) 
     setMessages([])
     setQuestion('')
     setChatError('')
-    if (historyRef.current) historyRef.current.open = false
+    if (window.matchMedia('(max-width: 1023px)').matches) setSidebarOpen(false)
   }
 
   async function sendQuestion(value = question) {
@@ -253,89 +256,94 @@ function DocumentChat({ document, token, error, onReplace }: DocumentChatProps) 
   const isPdf = document.filename.toLowerCase().endsWith('.pdf')
 
   return (
-    <section className="chat-card" aria-label="Chat with your document">
-      <div className="document-bar chat-document-bar">
-        <div className="document-icon">{isPdf ? 'PDF' : 'DOCX'}</div>
-        <div className="doc-meta"><strong className="ellipsis">{document.filename}</strong><span>Indexed · ready for questions</span></div>
-        <details className="history-picker" ref={historyRef}>
-          <summary aria-label="Open chat history">History <span>{conversations.length}</span></summary>
-          <div className="history-menu">
-            <button className="history-new" onClick={startNewConversation} disabled={busy}>＋ New conversation</button>
-            {conversations.length === 0
-              ? <p className="history-empty">Your saved conversations will appear here.</p>
-              : conversations.map((item) => (
-                <button key={item.conversation_id} className={`history-item ${conversationId === item.conversation_id ? 'selected' : ''}`} onClick={() => void openConversation(item.conversation_id).catch((cause) => setChatError(cause instanceof Error ? cause.message : 'Could not open that conversation.'))} disabled={busy}>
-                  <strong>{item.title || 'Document question'}</strong>
-                  <span>{new Date(item.updated_at).toLocaleDateString()}</span>
-                </button>
-              ))}
+    <main className="fixed inset-0 z-20 flex h-dvh min-h-0 w-full overflow-hidden bg-[#f6f7f4] text-[#252b28]" aria-label="Chat with your document">
+      {sidebarOpen && <button aria-label="Close sidebar" className="fixed inset-0 z-30 bg-[#17251d]/35 lg:hidden" onClick={() => setSidebarOpen(false)} />}
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-[min(84vw,300px)] flex-col border-r border-[#e5eae5] bg-white px-4 pb-4 pt-4 shadow-xl transition-transform duration-200 lg:relative lg:z-10 lg:w-[288px] lg:shrink-0 lg:shadow-none ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:-ml-[288px] lg:translate-x-0'}`} aria-label="Document and conversation sidebar" aria-hidden={!sidebarOpen} inert={!sidebarOpen}>
+        <div className="flex h-11 items-center"><Brand home /></div>
+        <button className="mt-5 flex w-full items-center justify-center gap-2 rounded-md bg-[#245d4d] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1b4d3f] disabled:opacity-50" onClick={startNewConversation} disabled={busy}>＋ <span>New conversation</span></button>
+        <section className="mt-6 min-w-0" aria-label="Active source document">
+          <div className="mb-2 px-1 text-[10px] font-bold tracking-[.14em] text-[#859188]">YOUR SOURCE</div>
+          <div className="flex min-w-0 items-start gap-3 rounded-lg border border-[#e7ece7] bg-[#fafbf9] p-3">
+            <span className="rounded bg-[#f8e9e7] px-1.5 py-1 text-[9px] font-bold text-[#ad534b]">{isPdf ? 'PDF' : 'DOCX'}</span>
+            <div className="min-w-0 flex-1"><p className="m-0 break-words text-xs font-semibold leading-5 text-[#33463b]" title={document.filename}>{document.filename}</p><p className="mt-1 flex items-center gap-1.5 text-[10px] text-[#688071]"><i className="h-1.5 w-1.5 rounded-full bg-[#619572]" /> Indexed and ready</p></div>
           </div>
-        </details>
-        <button className="text-button" onClick={onReplace} disabled={busy}>Replace</button>
-      </div>
-
-      <div className="chat-transcript" ref={scrollRef} aria-live="polite">
-        {loadingHistory ? (
-          <div className="chat-loading"><span className="spinner" /> Loading your saved conversations…</div>
-        ) : messages.length === 0 ? (
-          <div className="chat-empty">
-            <div className="sparkle">✳</div>
-            <h2>Ask your contract a question.</h2>
-            <p>Answers use retrieved passages from this document. Each source quote is checked against the extracted text.</p>
-            <div className="suggestion-row">
-              <button onClick={() => void sendQuestion('What are the main obligations of each party?')}>What are the main obligations?</button>
-              <button onClick={() => void sendQuestion('How does this agreement end or renew?')}>How does it end or renew?</button>
-              <button onClick={() => void sendQuestion('What does the contract say about liability limits?')}>What are the liability limits?</button>
-            </div>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 px-1 text-[10px] text-[#78857c]"><span>{document.indexed_chunks.toLocaleString()} passages</span>{document.page_count != null && isPdf && <span>{document.page_count.toLocaleString()} pages</span>}</div>
+          <p className="mt-3 px-1 text-[10px] leading-4 text-[#89958d]">Answers use this private document only.</p>
+        </section>
+        <section className="mt-6 flex min-h-0 flex-1 flex-col" aria-label="Saved conversations">
+          <div className="mb-2 flex items-center justify-between px-1 text-[10px] font-bold tracking-[.14em] text-[#859188]"><span>CONVERSATIONS</span><span className="rounded-full bg-[#edf2ee] px-2 py-0.5 text-[9px] tracking-normal text-[#557462]">{conversations.length}</span></div>
+          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+            {loadingHistory ? <p className="px-2 py-3 text-xs text-[#829087]">Loading conversations…</p> : conversations.length === 0 ? <p className="px-2 py-3 text-xs leading-5 text-[#89958d]">Saved conversations will appear here.</p> : conversations.map((item) => <button key={item.conversation_id} className={`flex w-full flex-col gap-1 rounded-md px-2.5 py-2 text-left transition hover:bg-[#f3f6f3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#54806a] ${conversationId === item.conversation_id ? 'bg-[#eaf1ed] text-[#285b4c]' : 'text-[#526158]'}`} onClick={() => void openConversation(item.conversation_id).catch((cause) => setChatError(cause instanceof Error ? cause.message : 'Could not open that conversation.'))} disabled={busy} aria-current={conversationId === item.conversation_id ? 'page' : undefined}><span className="w-full truncate text-xs font-medium">{item.title || 'Document question'}</span><span className="text-[10px] text-[#8a968e]">{new Date(item.updated_at).toLocaleDateString()}</span></button>)}
           </div>
-        ) : messages.map((message) => (
-          <article key={message.message_id} className={`chat-message ${message.role}`}>
-            <div className="message-label">{message.role === 'user' ? 'You' : 'Elcara'}{message.status === 'cancelled' ? ' · stopped' : message.status === 'failed' ? ' · incomplete' : ''}</div>
-            <div className="message-content">
-              {message.role === 'assistant' ? renderAnswer(message, (citation) => revealCitation(message.message_id, citation)) : message.content}
-              {message.status === 'streaming' && <span className="typing-cursor" aria-label="Answer streaming" />}
-            </div>
-            {message.role === 'assistant' && message.citations.length > 0 && (
-              <div className="message-citations" aria-label="Verified document sources">
-                <div className="citation-heading">VERIFIED SOURCES</div>
-                {message.citations.map((citation) => (
-                  <div className="citation-card" id={`citation-${message.message_id}-${citation.source_id}`} key={citation.source_id}>
-                    <details>
-                      <summary><span className="citation-check">✓</span> {citation.source_id} · {citationLocation(citation, isPdf)}</summary>
-                      <blockquote>{citation.quote}</blockquote>
-                    </details>
-                    <button className="citation-open" onClick={() => setSelectedCitation(citation)}>Open passage</button>
-                  </div>
-                ))}
+        </section>
+        <div className="mt-4 border-t border-[#e9ede9] pt-3"><button className="mb-3 w-full rounded-md border border-[#e3e9e4] px-3 py-2 text-xs font-medium text-[#557063] hover:bg-[#f8faf8] disabled:opacity-50" onClick={onReplace} disabled={busy}>Replace document</button><div className="flex items-center gap-2"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#e5ece8] text-xs font-bold text-[#35584c]">{user.name.trim().charAt(0).toUpperCase() || 'U'}</span><span className="min-w-0 flex-1 truncate text-xs text-[#526158]">{user.name}</span><button className="rounded px-2 py-1 text-[10px] text-[#557063] hover:bg-[#f1f4f1]" onClick={onLogout}>Sign out</button></div></div>
+      </aside>
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        <button className={`fixed top-3 z-50 grid h-9 w-9 place-items-center rounded-lg border border-[#e4e9e4] bg-white text-lg text-[#486454] shadow-sm transition-[left] hover:bg-[#f4f7f4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#54806a] ${sidebarOpen ? 'left-[calc(min(84vw,300px)-1.2rem)] lg:left-[264px]' : 'left-3'}`} onClick={() => setSidebarOpen((open) => !open)} aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'} aria-expanded={sidebarOpen}>{sidebarOpen ? '‹' : '☰'}</button>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto scroll-smooth px-4 py-6 md:px-10" ref={scrollRef} aria-live="polite">
+            {loadingHistory ? (
+              <div className="m-auto flex items-center justify-center gap-2 py-10 text-xs text-[#829087]" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" /> Loading your saved conversations…</div>
+            ) : messages.length === 0 ? (
+              <div className="m-auto flex w-full max-w-[680px] flex-col items-center justify-center px-3 py-8 text-center">
+                <div className="mb-5 grid h-11 w-11 place-items-center rounded-xl bg-[#e8f0eb] font-[Manrope] text-2xl font-extrabold text-[#32664f]" aria-hidden="true">e</div>
+                <h2 className="m-0 font-[Manrope] text-xl font-semibold tracking-[-.04em] text-[#283c33] md:text-2xl">What would you like to understand?</h2>
+                <p className="mb-6 mt-2 max-w-md text-sm leading-6 text-[#7d8981]">Ask a question about the clauses, obligations, or terms in your document.</p>
+                <div className="grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-3">
+                  <button className="rounded-lg border border-[#e2e9e3] bg-white px-3 py-3 text-left text-xs leading-5 text-[#51675a] transition hover:border-[#b8cec0] hover:bg-[#f7faf7] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#54806a]" onClick={() => void sendQuestion('What are the main obligations of each party?')}>Summarize the key obligations <span className="mt-1 block text-[10px] text-[#87958b]">Parties &amp; responsibilities</span></button>
+                  <button className="rounded-lg border border-[#e2e9e3] bg-white px-3 py-3 text-left text-xs leading-5 text-[#51675a] transition hover:border-[#b8cec0] hover:bg-[#f7faf7] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#54806a]" onClick={() => void sendQuestion('How does this agreement end or renew?')}>Explain termination and renewal <span className="mt-1 block text-[10px] text-[#87958b]">Dates &amp; notice periods</span></button>
+                  <button className="rounded-lg border border-[#e2e9e3] bg-white px-3 py-3 text-left text-xs leading-5 text-[#51675a] transition hover:border-[#b8cec0] hover:bg-[#f7faf7] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#54806a]" onClick={() => void sendQuestion('What does the contract say about liability limits?')}>Find the liability limits <span className="mt-1 block text-[10px] text-[#87958b]">Risk &amp; remedies</span></button>
+                </div>
               </div>
-            )}
-          </article>
-        ))}
-        {busy && stageMessage && <div className="chat-status"><span className="spinner" />{stageMessage}</div>}
+            ) : messages.map((message) => (
+              <article key={message.message_id} className={`mb-8 w-full ${message.role === 'user' ? 'ml-auto max-w-[min(760px,92%)]' : 'mx-auto max-w-[820px]'}`}>
+                <div className={`mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.12em] text-[#839087] ${message.role === 'user' ? 'justify-end' : ''}`}><span className={message.role === 'assistant' ? 'grid h-6 w-6 place-items-center rounded-md bg-[#e8f0eb] font-[Manrope] text-sm font-extrabold normal-case text-[#32664f]' : 'hidden'}>e</span>{message.role === 'user' ? 'You' : 'Elcara'}{message.status === 'cancelled' ? ' · stopped' : message.status === 'failed' ? ' · incomplete' : ''}</div>
+                <div className={`whitespace-pre-wrap break-words text-sm leading-7 ${message.role === 'user' ? 'ml-auto w-fit max-w-full rounded-2xl rounded-br-sm bg-[#e8f0eb] px-4 py-3 text-[#2f4f3f]' : 'max-w-full pl-0 text-[14px] leading-[1.85] text-[#34443a] md:text-[15px]'}`}>
+                  {message.role === 'assistant' ? renderAnswer(message, (citation) => revealCitation(message.message_id, citation)) : message.content}
+                  {message.status === 'streaming' && <span className="ml-1 inline-block h-4 w-1 animate-pulse rounded-sm bg-[#579070] align-middle" aria-label="Answer streaming" />}
+                </div>
+                {message.role === 'assistant' && message.citations.length > 0 && (
+                  <div className="message-citations" aria-label="Verified document sources">
+                    <div className="citation-heading">VERIFIED SOURCES</div>
+                    {message.citations.map((citation) => (
+                      <div className="citation-card" id={`citation-${message.message_id}-${citation.source_id}`} key={citation.source_id}>
+                        <details>
+                          <summary><span className="citation-check">✓</span> {citation.source_id} · {citationLocation(citation, isPdf)}</summary>
+                          <blockquote>{citation.quote}</blockquote>
+                        </details>
+                        <button className="citation-open" onClick={() => setSelectedCitation(citation)}>Open passage</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </article>
+            ))}
+            {busy && stageMessage && <div className="mx-auto mb-3 flex w-full max-w-[820px] items-center gap-2 text-xs text-[#738178]" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" />{stageMessage}</div>}
+          </div>
+          {(error || chatError) && <div className="mx-4 mt-2 text-xs text-[#a4483f]" role="alert">{chatError || error}</div>}
+          <form className="mx-4 mb-1 mt-3 flex shrink-0 items-end gap-2 rounded-xl border border-[#dfe6e0] bg-white p-2 shadow-[0_3px_12px_#183d2a0b] md:mx-auto md:w-[min(760px,calc(100%-3rem))]" onSubmit={(event) => { event.preventDefault(); void sendQuestion() }}>
+            <textarea
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  void sendQuestion()
+                }
+              }}
+              className="max-h-32 min-w-0 flex-1 resize-y border-0 bg-transparent px-2 py-2 text-sm leading-6 text-[#48574e] outline-none placeholder:text-[#a3aca6]"
+              placeholder="Ask anything about your document…"
+              aria-label="Ask a question about this document"
+              rows={1}
+              disabled={loadingHistory}
+            />
+            {busy
+              ? <button type="button" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#f0d4d0] bg-[#fff2ef] text-xs text-[#a4483f]" onClick={stopAnswer} aria-label="Stop answer">■</button>
+              : <button className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#245d4d] text-lg text-white hover:bg-[#1b4d3f] disabled:cursor-not-allowed disabled:opacity-40" type="submit" aria-label="Send question" disabled={!question.trim()}>↑</button>}
+          </form>
+          <div className="shrink-0 px-3 pb-3 pt-1 text-center text-[9px] leading-4 text-[#929d95]">Answers are grounded in retrieved passages from this document. Verify important terms in the cited source.</div>
+        </div>
       </div>
-
-      {(error || chatError) && <div className="inline-error" role="alert">{chatError || error}</div>}
-      <form className="composer chat-composer" onSubmit={(event) => { event.preventDefault(); void sendQuestion() }}>
-        <textarea
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault()
-              void sendQuestion()
-            }
-          }}
-          placeholder="Ask a question about this contract…"
-          aria-label="Ask a question about this contract"
-          rows={1}
-          disabled={loadingHistory}
-        />
-        {busy
-          ? <button type="button" className="stop-button" onClick={stopAnswer} aria-label="Stop answer">■</button>
-          : <button type="submit" aria-label="Send question" disabled={!question.trim()}>↑</button>}
-      </form>
-      <div className="chat-disclaimer">Answers use the most relevant retrieved passages. Search may not find every mention in a long document.</div>
-
       {selectedCitation && (
         <div className="source-overlay" role="presentation" onClick={() => setSelectedCitation(null)}>
           <section className="source-modal" role="dialog" aria-modal="true" aria-label="Verified source passage" onClick={(event) => event.stopPropagation()}>
@@ -346,8 +354,8 @@ function DocumentChat({ document, token, error, onReplace }: DocumentChatProps) 
             <div className={`source-modal-body ${isPdf ? 'has-pdf' : ''}`}>
               {isPdf && (
                 <div className="source-pdf-viewer">
-                  {sourceLoading && <div className="chat-loading"><span className="spinner" /> Opening the original PDF…</div>}
-                  {sourceUrl && <Suspense fallback={<div className="chat-loading"><span className="spinner" /> Loading PDF viewer…</div>}>
+                  {sourceLoading && <div className="m-auto flex items-center gap-2 text-xs text-[#829087]" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" /> Opening the original PDF…</div>}
+                  {sourceUrl && <Suspense fallback={<div className="m-auto flex items-center gap-2 text-xs text-[#829087]" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" /> Loading PDF viewer…</div>}>
                     <PdfCitationViewer key={selectedCitation.chunk_id} sourceUrl={sourceUrl} citation={selectedCitation} />
                   </Suspense>}
                 </div>
@@ -361,7 +369,7 @@ function DocumentChat({ document, token, error, onReplace }: DocumentChatProps) 
           </section>
         </div>
       )}
-    </section>
+    </main>
   )
 }
 
