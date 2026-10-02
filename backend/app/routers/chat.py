@@ -423,12 +423,17 @@ async def _send_message_events(
                 f"{total_chunks} indexed sections; it does not establish that an item is absent "
                 f"from the full document.\n\n{filtered_answer}"
             )
-        if assistant_status == "complete" and not citations and filtered_answer:
-            # Some providers answer correctly but omit the requested marker syntax.
-            # Keep that answer visible and attach the first verified passage rather
-            # than replacing useful document-grounded text with an error message.
-            citations = [sources[0]]
-            filtered_answer = f"{filtered_answer} [[{citations[0]['source_id']}]]"
+        if assistant_status == "complete" and mode == "broad" and not citations and filtered_answer:
+            # Preserve a document-wide answer when the model omitted markers; every
+            # supplied passage is still verified and remains available to inspect.
+            citations = sources
+            source_markers = ", ".join(f"[[{source['source_id']}]]" for source in sources)
+            filtered_answer = f"{filtered_answer}\n\nVerified passages: {source_markers}"
+        elif assistant_status == "complete" and not citations and filtered_answer:
+            filtered_answer = (
+                "I couldn't verify an answer in the retrieved document passages. "
+                "Please ask about a specific clause or term so I can show the exact source text."
+            )
         await database.messages.update_one(
             {"message_id": assistant_message_id},
             {"$set": {

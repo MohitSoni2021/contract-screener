@@ -56,10 +56,12 @@ function renderPdfText(text: string, quote: string) {
   const normalizedQuote = normalizePdfText(quote)
   const itemWords = normalizedItem.split(' ').filter((word) => word.length > 2)
   const quoteWords = new Set(normalizedQuote.split(' '))
-  const overlapsQuote = normalizedItem.length >= 7 && normalizedQuote.includes(normalizedItem)
-  const hasMatchingPhrase = itemWords.length >= 3 && itemWords.filter((word) => quoteWords.has(word)).length / itemWords.length >= 0.8
+  // PDF text items can split a source line differently from extraction. Prefer an
+  // exact normalized line match, then allow only complete multi-word matches.
+  const isExactSourceLine = normalizedItem.length >= 12 && normalizedQuote.includes(normalizedItem)
+  const hasCompletePhrase = itemWords.length >= 4 && itemWords.every((word) => quoteWords.has(word))
   const safeText = escapeHtml(text)
-  return overlapsQuote || hasMatchingPhrase ? `<mark class="pdf-source-highlight">${safeText}</mark>` : safeText
+  return isExactSourceLine || hasCompletePhrase ? `<mark class="pdf-source-highlight">${safeText}</mark>` : safeText
 }
 
 function normalizePdfText(value: string) {
