@@ -34,6 +34,10 @@ async def lifespan(app: FastAPI):
             unique=True,
             name="document_owner_unique",
         )
+        await app.state.database.documents.create_index(
+            [("status", 1), ("lease_expires_at", 1), ("created_at", 1)],
+            name="document_ingestion_queue",
+        )
         await app.state.database.conversations.create_index(
             [("owner_id", 1), ("document_id", 1), ("updated_at", -1)],
             name="conversation_history_by_document",

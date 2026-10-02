@@ -9,6 +9,7 @@ The hiring assignment has a three-day deadline and evaluates working behavior ov
 - FastAPI project, configuration, health endpoint, Qdrant Docker instructions, database migrations.
 - Upload validation for PDF/DOCX, generated document IDs, status lifecycle, document library/delete.
 - Text extraction with page/block references; fail clearly for image-only/scanned PDFs with no readable text.
+- Configurable ingestion caps, page-count preflight, and separate MongoDB-backed ingestion workers with renewable leases.
 
 ### 2. Index and single-document chat
 
@@ -18,7 +19,7 @@ The hiring assignment has a three-day deadline and evaluates working behavior ov
 - Similarity retrieval plus history-aware streamed answer; SSE cancellation persists partial output.
 - Persist conversations and messages per document.
 
-The single-document chat flow, history API, SSE stream, and source verification are implemented in the current starter. The points below remain completion criteria for validation and higher quality: adversarial quote tests, persistent background job recovery, robust cancellation cleanup, and comprehensive clause coverage.
+The single-document chat flow, history API, SSE stream, source verification, and MongoDB-backed ingestion queue are implemented in the current starter. The points below remain completion criteria for validation and higher quality: adversarial quote checks, robust cancellation cleanup, and comprehensive clause coverage.
 
 ### 3. Citation correctness and UI
 

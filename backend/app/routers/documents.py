@@ -3,18 +3,16 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from pymongo.errors import DuplicateKeyError
 
-from app.config import BACKEND_DIR
+from app.config import BACKEND_DIR, max_upload_bytes
 from app.dependencies import AuthenticatedUser, get_current_user, get_database
-from app.services.ingestion import ingest_document
 from app.services.qdrant_repository import create_qdrant_client, delete_document_vectors
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 UPLOAD_DIR = BACKEND_DIR / "data" / "uploads"
-MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".pdf", ".docx"}
 IN_PROGRESS_STATUSES = {"queued", "extracting", "chunking", "embedding", "indexing"}
 
@@ -48,7 +46,6 @@ async def _owned_document(database: Any, user_id: str, document_id: str) -> dict
 
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
 async def upload_document(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     user: AuthenticatedUser = Depends(get_current_user),
     database: Any = Depends(get_database),
@@ -71,6 +68,7 @@ async def upload_document(
     saved_path = user_upload_dir / f"{document_id}{extension}"
     user_upload_dir.mkdir(parents=True, exist_ok=True)
     size = 0
+    upload_limit = max_upload_bytes()
     header = b""
     try:
         with saved_path.open("wb") as destination:
@@ -78,8 +76,9 @@ async def upload_document(
                 if not header:
                     header = chunk[:1024]
                 size += len(chunk)
-                if size > MAX_UPLOAD_BYTES:
-                    raise HTTPException(status_code=413, detail="File is larger than the 25 MB limit.")
+                if size > upload_limit:
+                    limit_mb = upload_limit // (1024 * 1024)
+                    raise HTTPException(status_code=413, detail=f"File is larger than the configured {limit_mb} MB upload limit.")
                 destination.write(chunk)
     except HTTPException:
         saved_path.unlink(missing_ok=True)
@@ -118,7 +117,6 @@ async def upload_document(
     except DuplicateKeyError:
         saved_path.unlink(missing_ok=True)
         raise HTTPException(status_code=409, detail="Remove the current document before uploading a replacement.") from None
-    background_tasks.add_task(ingest_document, database, record, saved_path)
     return _public_document(record) or {}
 
 

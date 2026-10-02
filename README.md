@@ -27,7 +27,8 @@ The hiring assignment assumes a single user and explicitly says no account syste
 ```text
 PDF/DOCX upload
   -> validate size/type and assign document_id + owner_id
-  -> extract text and page/paragraph locations
+  -> queue document metadata in MongoDB for a leased ingestion worker
+  -> preflight page count and extract within configured text limits
   -> normalize and split into overlapping, location-aware chunks
   -> OpenAI embeddings -> Qdrant upsert with ownership and location payload
   -> persist document metadata and processing status in MongoDB
@@ -55,6 +56,8 @@ source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
+
+In another terminal, run the MongoDB-backed ingestion worker with `python -m app.worker` from `backend/`. The worker claims queued documents with expiring leases; configure the limits in `backend/.env` (`MAX_PDF_PAGES=600`, `MAX_UPLOAD_BYTES=26214400`, `MAX_EXTRACTED_CHARACTERS=3000000`, `MAX_EXTRACTED_TEXT_BYTES=12582912`). API and worker must share the upload directory.
 
 ### Start the frontend
 

@@ -1,12 +1,14 @@
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import asyncio
 
 from openai import AsyncOpenAI
 
+from app.config import max_extracted_characters, max_extracted_text_bytes, max_pdf_pages
 from app.services.ai_client import create_ai_client, embedding_model
 from app.services.chunking import chunk_document
-from app.services.extraction import extract_document
+from app.services.extraction import extract_document, pdf_page_count
 from app.services.qdrant_repository import (
     collection_name,
     create_qdrant_client,
@@ -16,8 +18,6 @@ from app.services.qdrant_repository import (
 )
 
 EMBEDDING_BATCH_SIZE = 64
-MAX_DOCUMENT_PAGES = 300
-MAX_EXTRACTED_CHARACTERS = 3_000_000
 
 
 def _now() -> datetime:
@@ -25,8 +25,11 @@ def _now() -> datetime:
 
 
 async def _set_status(database: Any, document_id: str, **fields: Any) -> None:
+    update = {"$set": {**fields, "updated_at": _now()}}
+    if fields.get("status") in {"ready", "failed"}:
+        update["$unset"] = {"worker_id": "", "lease_expires_at": ""}
     await database.documents.update_one(
-        {"document_id": document_id}, {"$set": {**fields, "updated_at": _now()}}
+        {"document_id": document_id}, update
     )
 
 
@@ -38,13 +41,20 @@ async def ingest_document(database: Any, document: dict[str, Any], file_path: Pa
         # Keep the OpenAI SDK interface so the provider can be changed independently later.
         embedding_client = create_ai_client()
         await _set_status(database, document_id, status="extracting", stage="Extracting text", progress=8)
-        extracted = extract_document(file_path, document["extension"])
-        if extracted.page_count and extracted.page_count > MAX_DOCUMENT_PAGES:
-            raise ValueError(f"This PDF has {extracted.page_count} pages. The limit is {MAX_DOCUMENT_PAGES} pages.")
+        if document["extension"] == ".pdf":
+            page_count = await asyncio.to_thread(pdf_page_count, file_path)
+            page_limit = max_pdf_pages()
+            if page_count > page_limit:
+                raise ValueError(f"This PDF has {page_count} pages. The limit is {page_limit} pages.")
+        extracted = await asyncio.to_thread(
+            extract_document,
+            file_path,
+            document["extension"],
+            max_characters=max_extracted_characters(),
+            max_bytes=max_extracted_text_bytes(),
+        )
         if not extracted.text.strip():
             raise ValueError("No selectable text was found. Scanned PDFs need OCR before they can be processed.")
-        if len(extracted.text) > MAX_EXTRACTED_CHARACTERS:
-            raise ValueError("This document contains more text than the current 3 million character limit.")
 
         await _set_status(
             database, document_id, status="chunking", stage="Preparing document sections", progress=22,

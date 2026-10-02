@@ -48,7 +48,7 @@ The shared collection scales more simply than creating a collection per user. If
 5. Generate embeddings in batches through the OpenAI SDK and upsert points with owner/document payload. Record the embedding model and dimensions in configuration; collection dimensions must match.
 6. Mark the document ready only after all chunks are indexed. Make ingestion idempotent using deterministic point IDs or a replaceable index version. On failure, clean partial points or keep the prior active index intact.
 
-The current implementation follows this flow with FastAPI background tasks and MongoDB status records. The browser polls status and resumes the owner's active document on refresh. Background tasks are in-process; a server restart during ingestion does not currently resume the job automatically. OCR is not implemented.
+The current implementation queues uploaded documents in MongoDB. A separate worker atomically claims queued or expired ingestion records and renews a lease while processing; deterministic Qdrant point IDs make a worker-crash replay idempotent. PDF page count is checked before text extraction, extraction runs outside the API event loop, and text is bounded by configurable character and UTF-8 byte limits. Defaults are 600 pages, 25 MiB upload, 3 million characters, and 12 MiB extracted text. This is a durable starter queue rather than a high-throughput broker: application-level failures are marked failed, and API/worker processes still share a local upload directory. Multi-host deployments need shared object storage (or a shared volume) and may replace the MongoDB-backed queue with a dedicated broker. OCR is not implemented.
 
 ## Question answering and history
 

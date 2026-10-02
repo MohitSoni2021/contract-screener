@@ -35,3 +35,37 @@ def cors_origins() -> list[str]:
 
 def setting(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
+
+
+def integer_setting(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    raw_value = setting(name, str(default))
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be an integer") from exc
+    if not minimum <= value <= maximum:
+        raise RuntimeError(f"{name} must be between {minimum} and {maximum}")
+    return value
+
+
+def max_pdf_pages() -> int:
+    return integer_setting("MAX_PDF_PAGES", 600, minimum=1, maximum=10_000)
+
+
+def max_upload_bytes() -> int:
+    return integer_setting(
+        "MAX_UPLOAD_BYTES", 25 * 1024 * 1024, minimum=1024 * 1024, maximum=1024 * 1024 * 1024
+    )
+
+
+def max_extracted_characters() -> int:
+    return integer_setting(
+        "MAX_EXTRACTED_CHARACTERS", 3_000_000, minimum=100_000, maximum=50_000_000
+    )
+
+
+def max_extracted_text_bytes() -> int:
+    # Leave room below MongoDB's 16 MiB BSON document ceiling for metadata and encoding overhead.
+    return integer_setting(
+        "MAX_EXTRACTED_TEXT_BYTES", 12 * 1024 * 1024, minimum=1024 * 1024, maximum=14 * 1024 * 1024
+    )

@@ -30,6 +30,7 @@ def chunk_document(text: str, blocks: list[SourceBlock]) -> list[TextChunk]:
         cursor = end + (1 if index < len(blocks) - 1 else 0)
 
     start = 0
+    first_overlapping_span = 0
     while start < len(text):
         end = min(start + CHUNK_SIZE, len(text))
         if end < len(text):
@@ -45,10 +46,15 @@ def chunk_document(text: str, blocks: list[SourceBlock]) -> list[TextChunk]:
         if trimmed_text:
             chunk_start = start + leading_space
             chunk_end = chunk_start + len(trimmed_text)
-            overlapping = [
-                block for block_start, block_end, block in spans
-                if block_start < chunk_end and block_end > chunk_start
-            ]
+            while first_overlapping_span < len(spans) and spans[first_overlapping_span][1] <= chunk_start:
+                first_overlapping_span += 1
+            overlapping = []
+            span_index = first_overlapping_span
+            while span_index < len(spans) and spans[span_index][0] < chunk_end:
+                block_start, block_end, block = spans[span_index]
+                if block_end > chunk_start:
+                    overlapping.append(block)
+                span_index += 1
             pages = [block.page_number for block in overlapping if block.page_number is not None]
             block_numbers = [block.block_number for block in overlapping]
             chunks.append(
