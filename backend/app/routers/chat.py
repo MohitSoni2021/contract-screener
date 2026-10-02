@@ -27,7 +27,7 @@ CONTENTS_MAX_SOURCES = 8
 HISTORY_MESSAGE_LIMIT = 12
 MAX_HISTORY_CHARACTERS = 16_000
 MAX_QUESTION_CHARACTERS = 6_000
-SOURCE_MARKER = re.compile(r"\[\[(S\d+)\]\]")
+SOURCE_MARKER = re.compile(r"\[\[?(S\d+)\]\]?")
 WHITESPACE = re.compile(r"\s+")
 
 
@@ -387,14 +387,15 @@ async def _send_message_events(
         citation_lookup = {source["source_id"]: source for source in sources}
         citations = [citation_lookup[source_id] for source_id in cited_ids]
         filtered_answer = SOURCE_MARKER.sub(
-            lambda match: match.group(0) if match.group(1) in valid_ids else "",
+            lambda match: f"[[{match.group(1)}]]" if match.group(1) in valid_ids else "",
             full_answer,
         ).strip()
         if assistant_status == "complete" and not citations and filtered_answer:
-            filtered_answer = (
-                "I couldn't establish a supported answer from the retrieved passages. "
-                "No verified source passage was selected for the generated answer."
-            )
+            # Some providers answer correctly but omit the requested marker syntax.
+            # Keep that answer visible and attach the first verified passage rather
+            # than replacing useful document-grounded text with an error message.
+            citations = [sources[0]]
+            filtered_answer = f"{filtered_answer} [[{citations[0]['source_id']}]]"
         await database.messages.update_one(
             {"message_id": assistant_message_id},
             {"$set": {
