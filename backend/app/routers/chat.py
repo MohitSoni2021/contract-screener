@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 from uuid import uuid4
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from openai import AsyncOpenAI
@@ -51,6 +52,15 @@ def _now() -> datetime:
 
 def _event(name: str, data: dict[str, Any]) -> str:
     return f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False, separators=(',', ':'))}\n\n"
+
+
+def _is_timeout_error(error: BaseException) -> bool:
+    current: BaseException | None = error
+    while current is not None:
+        if isinstance(current, (httpx.TimeoutException, TimeoutError)):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _normalized_text(value: str) -> str:
@@ -465,7 +475,7 @@ async def _send_message_events(
             {"conversation_id": conversation_id}, {"$set": {"updated_at": _now()}}
         )
         raise
-    except Exception:
+    except Exception as error:
         logger.exception(
             "Document chat request failed",
             extra={"document_id": document["document_id"], "user_id": user.id},
@@ -480,7 +490,13 @@ async def _send_message_events(
                 "updated_at": _now(),
             }},
         )
-        yield _event("error", {"message": "The answer could not be completed. Check the AI and Qdrant services, then try again."})
+        message = (
+            "Document search timed out. Please try again, or increase QDRANT_TIMEOUT_SECONDS "
+            "if your Qdrant server is remote or under load."
+            if _is_timeout_error(error)
+            else "The answer could not be completed. Check the AI and Qdrant services, then try again."
+        )
+        yield _event("error", {"message": message})
     finally:
         if stream is not None:
             await stream.close()

@@ -69,3 +69,14 @@ def max_extracted_text_bytes() -> int:
     return integer_setting(
         "MAX_EXTRACTED_TEXT_BYTES", 12 * 1024 * 1024, minimum=1024 * 1024, maximum=14 * 1024 * 1024
     )
+
+
+def qdrant_timeout_seconds() -> float:
+    raw_value = setting("QDRANT_TIMEOUT_SECONDS", "30")
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise RuntimeError("QDRANT_TIMEOUT_SECONDS must be a number") from exc
+    if not 1 <= value <= 300:
+        raise RuntimeError("QDRANT_TIMEOUT_SECONDS must be between 1 and 300")
+    return value

@@ -2,7 +2,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from qdrant_client import AsyncQdrantClient, models
 
-from app.config import setting
+from app.config import qdrant_timeout_seconds, setting
 from app.services.chunking import TextChunk
 
 
@@ -36,7 +36,7 @@ def document_scope(
 def create_qdrant_client() -> AsyncQdrantClient:
     url = setting("QDRANT_URL", "http://localhost:6333")
     api_key = setting("QDRANT_API_KEY") or None
-    return AsyncQdrantClient(url=url, api_key=api_key)
+    return AsyncQdrantClient(url=url, api_key=api_key, timeout=qdrant_timeout_seconds())
 
 
 def collection_name() -> str:
