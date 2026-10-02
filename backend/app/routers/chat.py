@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 TOP_K = 6
 BROAD_MAX_SOURCES = 18
 CONTENTS_MAX_SOURCES = 8
+FALLBACK_MAX_SOURCES = 12
+FALLBACK_MAX_CHARACTERS = 48_000
 HISTORY_MESSAGE_LIMIT = 12
 MAX_HISTORY_CHARACTERS = 16_000
 MAX_QUESTION_CHARACTERS = 6_000
@@ -74,6 +76,19 @@ def _question_mode(question: str) -> str:
     if re.search(r"\b(all|every|overall|whole document|entire document|overview|brief|summary|summarize|key points|important points|main points)\b", value):
         return "broad"
     return "focused"
+
+
+def _question_requires_document_context(question: str, mode: str) -> bool:
+    """Identify questions that need document-wide coverage when semantic search misses."""
+    if mode == "broad":
+        return True
+    value = question.casefold()
+    return bool(re.search(
+        r"\b(obligation|obligations|responsibilit(?:y|ies)|dut(?:y|ies)|"
+        r"commitment|commitments|main terms|key terms|what does this document say|"
+        r"what does the document say|summar(?:y|ize|ise)|overview)\b",
+        value,
+    ))
 
 
 async def _owned_ready_document(database: Any, user_id: str, document_id: str) -> dict[str, Any]:
@@ -182,6 +197,49 @@ def _verified_sources(
             "verified": True,
         })
     return sources
+
+
+def _bounded_document_sources(
+    *, document: dict[str, Any], canonical_text: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Create verified, evenly distributed excerpts without sending the whole document."""
+    if not canonical_text:
+        return [], {"mode": "document_fallback", "complete": False, "source_count": 0}
+
+    character_limit = min(FALLBACK_MAX_CHARACTERS, len(canonical_text))
+    source_count = min(FALLBACK_MAX_SOURCES, max(1, (len(canonical_text) + 3999) // 4000))
+    excerpt_size = max(1, character_limit // source_count)
+    sources: list[dict[str, Any]] = []
+    for index in range(source_count):
+        start = (index * len(canonical_text)) // source_count
+        end = min(len(canonical_text), start + excerpt_size)
+        excerpt = canonical_text[start:end].strip()
+        if not excerpt:
+            continue
+        leading_space = len(canonical_text[start:end]) - len(canonical_text[start:end].lstrip())
+        source_start = start + leading_space
+        source_end = source_start + len(excerpt)
+        sources.append({
+            "source_id": f"S{len(sources) + 1}",
+            "chunk_id": f"fallback-{index}",
+            "quote": excerpt,
+            "page_start": None,
+            "page_end": None,
+            "block_start": None,
+            "block_end": None,
+            "char_start": source_start,
+            "char_end": source_end,
+            "score": None,
+            "verified": True,
+        })
+    return sources, {
+        "mode": "document_fallback",
+        "complete": len(canonical_text) <= FALLBACK_MAX_CHARACTERS,
+        "source_count": len(sources),
+        "document_characters": len(canonical_text),
+        "supplied_characters": sum(len(source["quote"]) for source in sources),
+        "limit_characters": FALLBACK_MAX_CHARACTERS,
+    }
 
 
 async def _retrieve_broad_sources(
@@ -333,6 +391,13 @@ async def _send_message_events(
                 ai_client=ai_client, qdrant=qdrant,
             )
             coverage = {"mode": "focused", "complete": bool(sources), "source_count": len(sources)}
+
+        # A semantic miss should not block document-level questions such as summaries
+        # or party obligations. Use bounded, verified excerpts instead of the full text.
+        if not sources and _question_requires_document_context(question, mode):
+            sources, coverage = _bounded_document_sources(
+                document=document, canonical_text=canonical_text,
+            )
         yield _event("coverage", coverage)
 
         if not sources:
@@ -372,7 +437,10 @@ async def _send_message_events(
             "Do not fabricate or paraphrase text as a quotation. The application will show verified source text.\n\n"
             f"Retrieval mode: {mode}. Coverage metadata: {json.dumps(coverage, separators=(',', ':'))}. "
             "For broad questions, describe the covered sections or page ranges and call the answer partial "
-            "when coverage is incomplete. For contents questions, reproduce only contents supported by the passages.\n\n"
+            "when coverage is incomplete. For document_fallback context, the passages are evenly distributed "
+            "excerpts and may omit material between them; summarize supported themes but do not claim that an "
+            "item is absent from the entire document. For contents questions, reproduce only contents supported "
+            "by the passages.\n\n"
             f"Retrieved passages:\n{evidence}\n\nUser question:\n{question}"
         )
         messages = [
@@ -422,7 +490,7 @@ async def _send_message_events(
         ).strip()
         if (
             assistant_status == "complete"
-            and mode == "broad"
+            and coverage.get("mode") in {"broad", "document_fallback"}
             and not coverage.get("complete", False)
             and filtered_answer
         ):
@@ -433,7 +501,12 @@ async def _send_message_events(
                 f"{total_chunks} indexed sections; it does not establish that an item is absent "
                 f"from the full document.\n\n{filtered_answer}"
             )
-        if assistant_status == "complete" and mode == "broad" and not citations and filtered_answer:
+        if (
+            assistant_status == "complete"
+            and coverage.get("mode") in {"broad", "document_fallback"}
+            and not citations
+            and filtered_answer
+        ):
             # Preserve a document-wide answer when the model omitted markers; every
             # supplied passage is still verified and remains available to inspect.
             citations = sources
