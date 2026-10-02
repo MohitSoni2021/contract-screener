@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import DocumentChat from '../components/DocumentChat'
 import RouteLoading from '../components/RouteLoading'
 import type { User } from '../types'
 import type { AppDispatch, RootState } from '../store/store'
-import { fetchDocument, removeDocument } from '../store/documentsSlice'
+import { fetchDocument } from '../store/documentsSlice'
 
 type ChatPageProps = {
   user: User
@@ -15,7 +15,6 @@ type ChatPageProps = {
 
 function ChatPage({ user, token, onLogout }: ChatPageProps) {
   const { id } = useParams<{ id: string }>()
-  const navigate = useNavigate()
   const dispatch = useDispatch<AppDispatch>()
   const document = useSelector((state: RootState) => state.documents.items.find((item) => item.document_id === id) ?? null)
   const storeError = useSelector((state: RootState) => state.documents.error)
@@ -42,16 +41,6 @@ function ChatPage({ user, token, onLogout }: ChatPageProps) {
     return () => { active = false }
   }, [dispatch, document, id, token])
 
-  async function removeCurrentDocument() {
-    if (!id) return
-    try {
-      await dispatch(removeDocument({ token, documentId: id })).unwrap()
-      navigate('/workspace')
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not remove this document.')
-    }
-  }
-
   if (loading) return <RouteLoading />
   if (!document || document.status !== 'ready') {
     return (
@@ -59,12 +48,11 @@ function ChatPage({ user, token, onLogout }: ChatPageProps) {
         <div className="eyebrow">DOCUMENT CHAT</div>
         <h1>{document ? 'This document is still being prepared.' : 'Document unavailable.'}</h1>
         <p>{error || storeError || 'Return to your workspace to see the latest document status.'}</p>
-        <button className="primary-button" onClick={() => navigate('/workspace')}>Back to workspace</button>
       </main>
     )
   }
 
-  return <DocumentChat document={document} token={token} error={error || storeError} onReplace={removeCurrentDocument} user={user} onLogout={onLogout} />
+  return <DocumentChat document={document} token={token} error={error || storeError} user={user} onLogout={onLogout} />
 }
 
 export default ChatPage

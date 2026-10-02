@@ -9,7 +9,6 @@ type DocumentChatProps = {
   document: UploadedDocument
   token: string
   error: string
-  onReplace: () => void
   user: User
   onLogout: () => void
 }
@@ -80,7 +79,7 @@ function citationLocation(citation: ChatCitation, isPdf: boolean) {
   return 'Document passage'
 }
 
-function DocumentChat({ document, token, error, onReplace, user, onLogout }: DocumentChatProps) {
+function DocumentChat({ document, token, error, user, onLogout }: DocumentChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [conversationId, setConversationId] = useState<string | null>(null)
@@ -93,6 +92,7 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
   const [originalDocumentOpen, setOriginalDocumentOpen] = useState(false)
   const [sourceUrl, setSourceUrl] = useState('')
   const [sourceLoading, setSourceLoading] = useState(false)
+  const [conversationMenu, setConversationMenu] = useState<{ conversation: ChatConversation; x: number; y: number } | null>(null)
   const controllerRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -138,6 +138,16 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
       .finally(() => { if (active) setLoadingHistory(false) })
     return () => { active = false }
   }, [loadConversations])
+
+  useEffect(() => {
+    function closeMenu() { setConversationMenu(null) }
+    globalThis.document.addEventListener('click', closeMenu)
+    globalThis.document.addEventListener('scroll', closeMenu, true)
+    return () => {
+      globalThis.document.removeEventListener('click', closeMenu)
+      globalThis.document.removeEventListener('scroll', closeMenu, true)
+    }
+  }, [])
 
   useEffect(() => {
     const item = scrollRef.current
@@ -193,6 +203,17 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
     setChatError('')
     setSelectedCitation(null)
     if (window.matchMedia('(max-width: 1023px)').matches) setSidebarOpen(false)
+  }
+
+  async function deleteConversation(conversation: ChatConversation) {
+    setConversationMenu(null)
+    try {
+      await api(`/api/conversations/${conversation.conversation_id}`, { method: 'DELETE' })
+      setConversations((current) => current.filter((item) => item.conversation_id !== conversation.conversation_id))
+      if (conversationId === conversation.conversation_id) startNewConversation()
+    } catch (cause) {
+      setChatError(cause instanceof Error ? cause.message : 'Could not delete that conversation.')
+    }
   }
 
   async function sendQuestion(value = question) {
@@ -311,11 +332,12 @@ function DocumentChat({ document, token, error, onReplace, user, onLogout }: Doc
         <section className="mt-6 flex min-h-0 flex-1 flex-col" aria-label="Saved conversations">
           <div className="mb-2 flex items-center justify-between px-1 text-[10px] font-bold tracking-[.14em] text-[#859188]"><span>CONVERSATIONS</span><span className="rounded-full bg-[#edf2ee] px-2 py-0.5 text-[9px] tracking-normal text-[#557462]">{conversations.length}</span></div>
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
-            {loadingHistory ? <p className="px-2 py-3 text-xs text-[#829087]">Loading conversations…</p> : conversations.length === 0 ? <p className="px-2 py-3 text-xs leading-5 text-[#89958d]">Saved conversations will appear here.</p> : conversations.map((item) => <button key={item.conversation_id} className={`flex w-full flex-col gap-1 rounded-md px-2.5 py-2 text-left transition hover:bg-[#f3f6f3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#54806a] ${conversationId === item.conversation_id ? 'bg-[#eaf1ed] text-[#285b4c]' : 'text-[#526158]'}`} onClick={() => void openConversation(item.conversation_id).catch((cause) => setChatError(cause instanceof Error ? cause.message : 'Could not open that conversation.'))} disabled={busy} aria-current={conversationId === item.conversation_id ? 'page' : undefined}><span className="w-full truncate text-xs font-medium">{item.title || 'Document question'}</span><span className="text-[10px] text-[#8a968e]">{new Date(item.updated_at).toLocaleDateString()}</span></button>)}
+            {loadingHistory ? <p className="px-2 py-3 text-xs text-[#829087]">Loading conversations…</p> : conversations.length === 0 ? <p className="px-2 py-3 text-xs leading-5 text-[#89958d]">Saved conversations will appear here.</p> : conversations.map((item) => <button key={item.conversation_id} className={`flex w-full flex-col gap-1 rounded-md px-2.5 py-2 text-left transition hover:bg-[#f3f6f3] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#54806a] ${conversationId === item.conversation_id ? 'bg-[#eaf1ed] text-[#285b4c]' : 'text-[#526158]'}`} onClick={() => void openConversation(item.conversation_id).catch((cause) => setChatError(cause instanceof Error ? cause.message : 'Could not open that conversation.'))} onContextMenu={(event) => { event.preventDefault(); setConversationMenu({ conversation: item, x: event.clientX, y: event.clientY }) }} disabled={busy} aria-current={conversationId === item.conversation_id ? 'page' : undefined}><span className="w-full truncate text-xs font-medium">{item.title || 'Document question'}</span><span className="text-[10px] text-[#8a968e]">{new Date(item.updated_at).toLocaleDateString()}</span></button>)}
           </div>
         </section>
-        <div className="mt-4 border-t border-[#e9ede9] pt-3"><button className="mb-3 w-full rounded-md border border-[#e3e9e4] px-3 py-2 text-xs font-medium text-[#557063] hover:bg-[#f8faf8] disabled:opacity-50" onClick={onReplace} disabled={busy}>Replace document</button><div className="flex items-center gap-2"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#e5ece8] text-xs font-bold text-[#35584c]">{user.name.trim().charAt(0).toUpperCase() || 'U'}</span><span className="min-w-0 flex-1 truncate text-xs text-[#526158]">{user.name}</span><button className="rounded px-2 py-1 text-[10px] text-[#557063] hover:bg-[#f1f4f1]" onClick={onLogout}>Sign out</button></div></div>
+        <div className="mt-4 border-t border-[#e9ede9] pt-3"><div className="flex items-center gap-2"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#e5ece8] text-xs font-bold text-[#35584c]">{user.name.trim().charAt(0).toUpperCase() || 'U'}</span><span className="min-w-0 flex-1 truncate text-xs text-[#526158]">{user.name}</span><button className="rounded px-2 py-1 text-[10px] text-[#557063] hover:bg-[#f1f4f1]" onClick={onLogout}>Sign out</button></div></div>
       </aside>
+      {conversationMenu && <div className="document-context-menu" style={{ left: conversationMenu.x, top: conversationMenu.y }} onClick={(event) => event.stopPropagation()}><button onClick={() => { setConversationMenu(null); void openConversation(conversationMenu.conversation.conversation_id).catch((cause) => setChatError(cause instanceof Error ? cause.message : 'Could not open that conversation.')) }} disabled={busy}>Open conversation</button><button className="danger-action" onClick={() => void deleteConversation(conversationMenu.conversation)} disabled={busy}>Delete conversation</button></div>}
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         <button className={`fixed top-3 z-50 grid h-9 w-9 place-items-center rounded-lg border border-[#e4e9e4] bg-white text-lg text-[#486454] shadow-sm transition-[left] hover:bg-[#f4f7f4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#54806a] ${sidebarOpen ? 'left-[calc(min(84vw,300px)-1.2rem)] lg:left-[264px]' : 'left-3'}`} onClick={() => setSidebarOpen((open) => !open)} aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'} aria-expanded={sidebarOpen}>{sidebarOpen ? '‹' : '☰'}</button>
         <div className="flex min-h-0 flex-1 flex-col">

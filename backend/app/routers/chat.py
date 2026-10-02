@@ -537,6 +537,21 @@ async def get_conversation(
     }
 
 
+@router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_conversation(
+    conversation_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+    database: Any = Depends(get_database),
+) -> None:
+    conversation = await database.conversations.find_one(
+        {"conversation_id": conversation_id, "owner_id": user.id}, {"_id": 1}
+    )
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    await database.messages.delete_many({"conversation_id": conversation_id, "owner_id": user.id})
+    await database.conversations.delete_one({"conversation_id": conversation_id, "owner_id": user.id})
+
+
 @router.post("/chat/stream")
 async def stream_chat(
     payload: ChatStreamRequest,
