@@ -6,6 +6,7 @@ import type { UploadedDocument, User } from "../types";
 import type { AppDispatch, RootState } from "../store/store";
 import { fetchDocuments } from "../store/documentsSlice";
 import ReactMarkdown from "react-markdown";
+import { apiUrl } from "../config";
 
 type ResearchAnswer = {
   summary?: string;
@@ -167,7 +168,7 @@ function ResearchPage({ user, token, onLogout }: ResearchPageProps) {
     setError("");
     setAnswer("");
     try {
-      const response = await fetch("/api/research", {
+      const response = await fetch(apiUrl("/api/research"), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

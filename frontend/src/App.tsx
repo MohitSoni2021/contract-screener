@@ -6,6 +6,7 @@ import ChatPage from './pages/ChatPage'
 import CompareDocPage from './pages/CompareDocPage'
 import ResearchPage from './pages/ResearchPage'
 import type { AuthSession, User } from './types'
+import { apiUrl } from './config'
 
 const TOKEN_KEY = 'elcara_access_token'
 
@@ -22,7 +23,7 @@ function App() {
     }
 
     let active = true
-    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${savedToken}` } })
+    fetch(apiUrl('/api/auth/me'), { headers: { Authorization: `Bearer ${savedToken}` } })
       .then(async (response) => {
         if (!response.ok) throw new Error('Session expired')
         return response.json() as Promise<User>
@@ -55,7 +56,7 @@ function App() {
     setToken('')
     setUser(null)
     if (activeToken) {
-      void fetch('/api/auth/logout', {
+      void fetch(apiUrl('/api/auth/logout'), {
         method: 'POST',
         headers: { Authorization: `Bearer ${activeToken}` },
       }).catch(() => undefined)

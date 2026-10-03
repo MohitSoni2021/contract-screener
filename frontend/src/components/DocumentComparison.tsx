@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ComparisonChange, UploadedDocument } from "../types";
 import DocumentDropdown from "./DocumentDropdown";
+import { apiUrl } from "../config";
 
 type Props = { documents: UploadedDocument[]; token: string };
 
@@ -22,7 +23,7 @@ function DocumentComparison({ documents, token }: Props) {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/documents/compare", {
+      const response = await fetch(apiUrl("/api/documents/compare"), {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -219,7 +220,7 @@ function significanceRank(value: ComparisonChange["significance"]) {
 }
 
 async function openSource(document: UploadedDocument, token: string) {
-  const response = await fetch(`/api/documents/${document.document_id}/file`, {
+  const response = await fetch(apiUrl(`/api/documents/${document.document_id}/file`), {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) return;

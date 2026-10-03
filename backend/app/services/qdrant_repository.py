@@ -34,7 +34,13 @@ def document_scope(
 
 
 def create_qdrant_client() -> AsyncQdrantClient:
-    url = setting("QDRANT_URL", "http://localhost:6333")
+    # Prefer the cloud/online cluster endpoint when provided.
+    # QDRANT_CLUSTER_ENDPOINT is the canonical name for Qdrant Cloud URLs;
+    # QDRANT_URL is kept for backward-compat with local setups.
+    url = (
+        setting("QDRANT_CLUSTER_ENDPOINT")
+        or setting("QDRANT_URL", "http://localhost:6333")
+    )
     api_key = setting("QDRANT_API_KEY") or None
     return AsyncQdrantClient(url=url, api_key=api_key, timeout=qdrant_timeout_seconds())
 

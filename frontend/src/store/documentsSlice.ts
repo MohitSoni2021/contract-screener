@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import type { UploadedDocument } from '../types'
+import { apiUrl } from '../config'
 
 export type DocumentsState = {
   items: UploadedDocument[]
@@ -34,7 +35,7 @@ function wait(milliseconds: number) {
 }
 
 async function request(path: string, token: string, init: RequestInit = {}) {
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     ...init,
     headers: { Authorization: `Bearer ${token}`, ...init.headers },
   })

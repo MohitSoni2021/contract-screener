@@ -10,6 +10,7 @@ from pymongo import AsyncMongoClient, ReturnDocument
 
 from app.config import database_name, required_setting
 from app.services.ingestion import ingest_document
+from app.services.storage import ensure_local_file
 
 logger = logging.getLogger("elcara.worker")
 POLL_INTERVAL_SECONDS = 2
@@ -86,12 +87,29 @@ async def run_worker() -> None:
                 continue
 
             document_id = document["document_id"]
+            file_path = await ensure_local_file(document)
+            if file_path is None or not file_path.is_file():
+                logger.error("Document file not found locally or in storage", extra={"document_id": document_id})
+                await database.documents.update_one(
+                    {"document_id": document_id, "worker_id": worker_id},
+                    {
+                        "$set": {
+                            "status": "failed",
+                            "stage": "Processing failed",
+                            "error": "The document file is missing or unavailable.",
+                            "updated_at": _now(),
+                        },
+                        "$unset": {"worker_id": "", "lease_expires_at": ""},
+                    },
+                )
+                continue
+
             heartbeat = asyncio.create_task(_renew_lease(database, document_id, worker_id))
             try:
                 await ingest_document(
                     database,
                     document,
-                    Path(document["stored_path"]),
+                    file_path,
                     worker_id=worker_id,
                 )
             except Exception:

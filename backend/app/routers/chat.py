@@ -19,6 +19,7 @@ from app.dependencies import AuthenticatedUser, get_current_user, get_database
 from app.services.ai_client import chat_model, create_ai_client, embedding_model
 from app.services.extraction import extract_document
 from app.services.qdrant_repository import collection_name, create_qdrant_client, document_scope
+from app.services.storage import ensure_local_file
 
 router = APIRouter(prefix="/api", tags=["chat"])
 logger = logging.getLogger(__name__)
@@ -110,7 +111,10 @@ async def _canonical_text(database: Any, document: dict[str, Any]) -> str:
         return canonical_text
 
     # Backfill documents indexed before canonical text was persisted.
-    extracted = extract_document(Path(document["stored_path"]), document["extension"])
+    file_path = await ensure_local_file(document)
+    if not file_path or not file_path.is_file():
+        raise ValueError("The original document file is unavailable.")
+    extracted = extract_document(file_path, document["extension"])
     if not extracted.text:
         raise ValueError("The original document no longer contains readable text.")
     await database.documents.update_one(
@@ -128,24 +132,37 @@ async def _retrieve_sources(
     ai_client: AsyncOpenAI,
     qdrant: AsyncQdrantClient,
 ) -> list[dict[str, Any]]:
+    col_name = collection_name()
+    try:
+        if not await qdrant.collection_exists(col_name):
+            logger.warning("Qdrant collection '%s' does not exist yet. Returning empty sources.", col_name)
+            return []
+    except Exception:
+        logger.exception("Failed to check if Qdrant collection '%s' exists", col_name)
+        return []
+
     embedding_response = await ai_client.embeddings.create(
         model=embedding_model(),
         input=question,
     )
     if not embedding_response.data:
         return []
-    response = await qdrant.query_points(
-        collection_name=collection_name(),
-        query=embedding_response.data[0].embedding,
-        query_filter=document_scope(
-            document["owner_id"],
-            document["document_id"],
-            active_only=True,
-            index_version=int(document.get("index_version", 1)),
-        ),
-        limit=TOP_K,
-        with_payload=True,
-    )
+    try:
+        response = await qdrant.query_points(
+            collection_name=col_name,
+            query=embedding_response.data[0].embedding,
+            query_filter=document_scope(
+                document["owner_id"],
+                document["document_id"],
+                active_only=True,
+                index_version=int(document.get("index_version", 1)),
+            ),
+            limit=TOP_K,
+            with_payload=True,
+        )
+    except Exception:
+        logger.exception("Failed to query Qdrant collection '%s'", col_name)
+        return []
 
     return _verified_sources(document, canonical_text, response.points)
 

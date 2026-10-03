@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import Brand from '../components/Brand'
 import type { AuthSession } from '../types'
+import { apiUrl } from '../config'
 
 type AuthPageProps = {
   mode: 'login' | 'register'
@@ -26,7 +27,7 @@ function AuthPage({ mode, onAuthenticated }: AuthPageProps) {
 
     setBusy(true)
     try {
-      const response = await fetch(`/api/auth/${isRegister ? 'register' : 'login'}`, {
+      const response = await fetch(apiUrl(`/api/auth/${isRegister ? 'register' : 'login'}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(isRegister

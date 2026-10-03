@@ -14,6 +14,11 @@ from app.dependencies import AuthenticatedUser, get_current_user, get_database
 from app.services.qdrant_repository import create_qdrant_client, delete_document_vectors
 from app.services.comparison import compare_documents
 from app.services.extraction import extract_document
+from app.services.storage import (
+    delete_file_from_storage,
+    ensure_local_file,
+    upload_file_to_storage,
+)
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 logger = logging.getLogger(__name__)
@@ -111,12 +116,14 @@ async def upload_document(
         raise
 
     now = datetime.now(timezone.utc)
+    storage_path = f"{user.id}/{document_id}{extension}"
     record = {
         "document_id": document_id,
         "owner_id": user.id,
         "filename": original_name,
         "extension": extension,
         "stored_path": str(saved_path),
+        "storage_path": storage_path,
         "status": "queued",
         "stage": "Upload complete. Preparing document…",
         "progress": 2,
@@ -131,6 +138,13 @@ async def upload_document(
     except DuplicateKeyError:
         saved_path.unlink(missing_ok=True)
         raise HTTPException(status_code=409, detail="This document could not be added. Please try again.") from None
+
+    # Sync to persistent cloud storage (Supabase) if configured
+    content_type = "application/pdf" if extension == ".pdf" else (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    await upload_file_to_storage(saved_path, storage_path, content_type=content_type)
+
     return _public_document(record) or {}
 
 
@@ -169,9 +183,13 @@ async def compare_document_versions(
     new_document = await _owned_document(database, user.id, request.new_document_id)
     if old_document.get("status") != "ready" or new_document.get("status") != "ready":
         raise HTTPException(status_code=409, detail="Both document versions must finish processing before comparison.")
+    old_path = await ensure_local_file(old_document)
+    new_path = await ensure_local_file(new_document)
+    if not old_path or not old_path.is_file() or not new_path or not new_path.is_file():
+        raise HTTPException(status_code=404, detail="One of the document versions is unavailable.")
     try:
-        old_extracted = extract_document(Path(old_document["stored_path"]), old_document["extension"])
-        new_extracted = extract_document(Path(new_document["stored_path"]), new_document["extension"])
+        old_extracted = extract_document(old_path, old_document["extension"])
+        new_extracted = extract_document(new_path, new_document["extension"])
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"Could not extract a document version: {exc}") from exc
     changes = compare_documents(old_extracted, new_extracted, request.old_document_id, request.new_document_id)
@@ -207,8 +225,8 @@ async def get_document_file(
     document = await _owned_document(database, user.id, document_id)
     if document.get("status") != "ready":
         raise HTTPException(status_code=409, detail="The document is not ready to view.")
-    path = Path(document["stored_path"])
-    if not path.is_file():
+    path = await ensure_local_file(document)
+    if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail="The original document file is unavailable.")
     media_type = "application/pdf" if document["extension"] == ".pdf" else (
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -237,6 +255,8 @@ async def delete_document(
     finally:
         await qdrant.close()
     Path(document["stored_path"]).unlink(missing_ok=True)
+    storage_path = document.get("storage_path") or f"{user.id}/{document_id}{document['extension']}"
+    await delete_file_from_storage(storage_path)
     await database.documents.update_one(
         {"document_id": document_id, "owner_id": user.id, "active": True},
         {"$set": {"active": False, "status": "deleted", "updated_at": datetime.now(timezone.utc)}},

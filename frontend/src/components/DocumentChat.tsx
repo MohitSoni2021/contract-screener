@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { ChatCitation, ChatConversation, ChatCoverage, ChatMessage, UploadedDocument, User } from '../types'
 import Brand from './Brand'
+import { apiUrl } from '../config'
 
 const PdfCitationViewer = lazy(() => import('./PdfCitationViewer'))
 
@@ -99,7 +100,7 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
   const [sourcePanelOpen, setSourcePanelOpen] = useState(false)
 
   const api = useCallback(async (path: string, init: RequestInit = {}) => {
-    const response = await fetch(path, {
+    const response = await fetch(apiUrl(path), {
       ...init,
       headers: { Authorization: `Bearer ${token}`, ...init.headers },
     })
