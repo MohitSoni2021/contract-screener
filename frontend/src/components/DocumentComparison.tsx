@@ -82,85 +82,39 @@ function DocumentComparison({ documents, token }: Props) {
       className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-[#f7f9f7]"
       aria-labelledby="comparison-title"
     >
-      {/* Header and Selectors */}
-      <div className="shrink-0">
-
-        {/* Unified Dual Document Selector Bar */}
-        <div className="flex flex-wrap items-center gap-3 rounded-xl p-3">
-          <div className="flex flex-1 min-w-[220px] flex-col gap-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#697d70]">
-              Earlier Version (V1)
-            </span>
-            <DocumentDropdown
-              documents={ready}
-              value={oldId}
-              onChange={setOldId}
-              placeholder="Select earlier version"
-            />
-          </div>
-
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d2ded5] bg-white text-[#567a65] shadow-2xs self-end mb-0.5">
-            <ArrowRight className="h-4 w-4" />
-          </div>
-
-          <div className="flex flex-1 min-w-[220px] flex-col gap-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#697d70]">
-              Later Version (V2)
-            </span>
-            <DocumentDropdown
-              documents={ready}
-              value={newId}
-              onChange={setNewId}
-              placeholder="Select later version"
-            />
-          </div>
-
-          {activeTab === "diffs" && (
-            <div className="self-end mb-0.5">
-              <button
-                type="button"
-                className="flex h-9 items-center gap-1.5 rounded-lg bg-[#25523a] px-4 text-xs font-semibold text-white shadow-xs transition hover:bg-[#1b3d2b] disabled:opacity-40 disabled:cursor-not-allowed"
-                onClick={() => void compare()}
-                disabled={loading || ready.length < 2 || !oldId || !newId || oldId === newId}
-              >
-                <GitCompare className="h-3.5 w-3.5" />
-                <span>{loading ? "Comparing…" : "Compare versions"}</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {error && (
-        <div className="shrink-0 bg-[#fff5f5] px-6 py-2.5 text-xs text-[#991b1b] border-b border-[#fecaca]" role="alert">
-          {error}
-        </div>
-      )}
-
-      {/* View Switcher Tabs */}
-      <div className="flex items-center justify-between border-b border-[#dfe8e1] bg-white px-6 shrink-0">
-        <div className="flex items-center gap-1">
+      {/* Lean Edge-to-Edge Top Bar: Tabs on Left, Version Selectors on Right */}
+      <div className="shrink-0 border-b border-[#dfe8e1] bg-white px-5 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+        {/* Left: View Switcher Tabs */}
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
-            className={`flex items-center gap-2 py-3 px-3.5 text-xs font-semibold border-b-2 transition ${activeTab === "chat"
-              ? "border-[#25523a] text-[#25523a]"
-              : "border-transparent text-[#6e8275] hover:text-[#25523a]"
-              }`}
+            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+              activeTab === "chat"
+                ? "bg-[#25523a] text-white shadow-2xs"
+                : "text-[#5b7365] hover:bg-[#f0f5f1] hover:text-[#25523a]"
+            }`}
             onClick={() => setActiveTab("chat")}
           >
             <MessageSquare className="h-3.5 w-3.5" />
-            <span>Comparative Q&amp;A Chat</span>
-            <span className="rounded-md bg-[#eaf3ec] px-1.5 py-0.5 text-[10px] font-bold text-[#235338]">
-              Dual-Doc AI
+            <span>Comparative Chat</span>
+            <span
+              className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${
+                activeTab === "chat"
+                  ? "bg-white/20 text-white"
+                  : "bg-[#e8f2eb] text-[#25523a]"
+              }`}
+            >
+              AI
             </span>
           </button>
 
           <button
             type="button"
-            className={`flex items-center gap-2 py-3 px-3.5 text-xs font-semibold border-b-2 transition ${activeTab === "diffs"
-              ? "border-[#25523a] text-[#25523a]"
-              : "border-transparent text-[#6e8275] hover:text-[#25523a]"
-              }`}
+            className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+              activeTab === "diffs"
+                ? "bg-[#25523a] text-white shadow-2xs"
+                : "text-[#5b7365] hover:bg-[#f0f5f1] hover:text-[#25523a]"
+            }`}
             onClick={() => {
               setActiveTab("diffs");
               if (changes.length === 0 && oldId && newId && oldId !== newId) {
@@ -171,14 +125,63 @@ function DocumentComparison({ documents, token }: Props) {
             <GitCompare className="h-3.5 w-3.5" />
             <span>Clause Diff Review</span>
             {changes.length > 0 && (
-              <span className="rounded-md bg-[#f0f4f1] px-1.5 py-0.5 text-[10px] font-bold text-[#446050]">
+              <span
+                className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${
+                  activeTab === "diffs"
+                    ? "bg-white/20 text-white"
+                    : "bg-[#f0f4f1] text-[#446050]"
+                }`}
+              >
                 {changes.length}
               </span>
             )}
           </button>
         </div>
 
+        {/* Right: Dual Version Selectors (V1 -> V2) */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#697d70]">
+              V1:
+            </span>
+            <div className="w-[170px] sm:w-[210px]">
+              <DocumentDropdown
+                documents={ready}
+                value={oldId}
+                onChange={setOldId}
+                placeholder="Select earlier draft"
+              />
+            </div>
+          </div>
 
+          <ArrowRight className="h-3.5 w-3.5 text-[#8aa093] shrink-0" />
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#697d70]">
+              V2:
+            </span>
+            <div className="w-[170px] sm:w-[210px]">
+              <DocumentDropdown
+                documents={ready}
+                value={newId}
+                onChange={setNewId}
+                placeholder="Select later draft"
+              />
+            </div>
+          </div>
+
+          {activeTab === "diffs" && (
+            <button
+              type="button"
+              className="flex items-center gap-1.5 rounded-lg bg-[#25523a] px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-[#1a3d2a] disabled:opacity-40"
+              onClick={() => void compare()}
+              disabled={loading || ready.length < 2 || !oldId || !newId || oldId === newId}
+            >
+              <GitCompare className="h-3.5 w-3.5" />
+              <span>{loading ? "Comparing…" : "Compare"}</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tab 1: Comparative Q&A Chat */}
@@ -189,6 +192,12 @@ function DocumentComparison({ documents, token }: Props) {
       {/* Tab 2: Clause Diff Review */}
       {activeTab === "diffs" && (
         <div className="flex-1 overflow-y-auto min-h-0 bg-[#f7f9f7]">
+          {error && (
+            <div className="mx-6 mt-4 rounded-lg border border-[#fecaca] bg-[#fff5f5] p-3 text-xs text-[#991b1b]">
+              <strong>Comparison error:</strong> {error}
+            </div>
+          )}
+
           {changes.length === 0 && !loading && (
             <div className="flex flex-col items-center justify-center py-20 text-center text-[#74887d]">
               <div className="mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-[#e5efe8] text-[#275d40]">
