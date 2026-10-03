@@ -81,10 +81,10 @@ function DocumentDropdown({
   const [open, setOpen] = useState(false);
   const selected = documents.find((document) => document.document_id === value);
   return (
-    <div className="relative shrink-0">
+    <div className="relative shrink-0 text-xs">
       <button
         type="button"
-        className="group flex max-w-[280px] items-center gap-2 text-left text-xs text-[#486454]"
+        className="group flex max-w-[280px] items-center gap-2 text-left text-chat-meta text-[#486454]"
         onClick={() => setOpen((current) => !current)}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -92,7 +92,7 @@ function DocumentDropdown({
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#bfd2c4] bg-white text-xl leading-none text-[#3f7655] shadow-sm transition group-hover:bg-[#edf5ef]">
           +
         </span>
-        <span className="min-w-0 truncate font-medium">
+        <span className="min-w-0 truncate font-medium text-xs">
           {selected?.filename ?? "Add source document"}
         </span>
         <span className="text-[#789080]">⌄</span>
@@ -102,11 +102,11 @@ function DocumentDropdown({
           className="absolute left-0 top-[calc(100%+8px)] z-30 w-[min(280px,calc(100vw-2rem))] overflow-hidden rounded-lg border border-[#dfe8e1] bg-white p-1.5 shadow-[0_12px_30px_#183d2a18]"
           role="listbox"
         >
-          <div className="px-2.5 py-2 text-[9px] font-bold tracking-[.12em] text-[#859188]">
+          <div className="px-2.5 py-2 text-chat-label font-bold tracking-[.12em] text-[#859188]">
             SOURCE DOCUMENT
           </div>
           {documents.length === 0 ? (
-            <div className="px-2.5 py-3 text-xs text-[#819087]">
+              <div className="px-2.5 py-3 text-chat-meta text-[#819087]">
               No ready documents available.
             </div>
           ) : (
@@ -116,7 +116,7 @@ function DocumentDropdown({
                 role="option"
                 aria-selected={document.document_id === value}
                 key={document.document_id}
-                className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs transition hover:bg-[#f1f6f2] ${document.document_id === value ? "bg-[#eaf2ec] text-[#285b4c]" : "text-[#56685d]"}`}
+                className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-chat-meta transition hover:bg-[#f1f6f2] ${document.document_id === value ? "bg-[#eaf2ec] text-[#285b4c]" : "text-[#56685d]"}`}
                 onClick={() => {
                   onChange(document.document_id);
                   setOpen(false);
@@ -223,7 +223,7 @@ function ResearchPage({ user, token, onLogout }: ResearchPageProps) {
                     value={documentId}
                     onChange={setDocumentId}
                   />
-                  <span className="text-[10px] text-[#8a968e]">Source document</span>
+                  <span className="text-chat-label text-[#8a968e]">Source document</span>
                 </header>
                 {/* Chat-like transcript: the answer grows here while the
                     composer remains anchored at the bottom. */}
@@ -231,32 +231,32 @@ function ResearchPage({ user, token, onLogout }: ResearchPageProps) {
                   <div className="mx-auto flex w-full max-w-[820px] flex-1 flex-col">
                     <div className="mb-8 flex items-center justify-between gap-4">
                       <div>
-                        <div className="text-[10px] font-bold tracking-[.14em] text-[#859188]">
+                        <div className="text-xs text-[#859188]">
                           SOURCE-GROUNDED ANSWER
                         </div>
                         <p className="m-0 mt-1 text-xs text-[#718178]">
                           Research grounded in the selected document
                         </p>
                       </div>
-                      <span className="rounded-full bg-[#edf2ee] px-2.5 py-1 text-[9px] font-semibold text-[#557462]">
+                      <span className="rounded-full bg-[#edf2ee] px-2.5 py-1 text-xs font-semibold text-[#557462]">
                         {busy ? "Researching" : answer ? "Verified" : "Ready"}
                       </span>
                     </div>
                     {busy ? (
-                      <div className="flex max-w-[500px] items-start gap-3 rounded-2xl rounded-bl-sm border border-[#e2e9e3] bg-white px-4 py-3 text-sm text-[#56685d] shadow-[0_3px_12px_#183d2a08]" role="status">
-                        <span className="mt-1 h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" />
-                        <span><strong className="font-semibold text-[#3f7655]">Preparing final answer</strong><span className="mt-0.5 block text-xs leading-5 text-[#7b8a80]">The complete research result will appear here when ready.</span></span>
+                      <div className="flex items-center gap-3 py-3 text-xs text-[#8d918f]" role="status" aria-live="polite">
+                        <span className="text-base leading-none text-[#a2a5a3]" aria-hidden="true">◎</span>
+                        <span>Preparing the final answer<span className="inline-flex w-7 overflow-hidden align-bottom text-left" aria-hidden="true"><span className="animate-pulse">...</span></span></span>
                       </div>
                     ) : answer ? (
-                      <article className="markdown-answer max-w-[760px] text-sm leading-7 text-[#34443a]">
+                      <article className="markdown-answer max-w-[760px] text-xs text-[#34443a] [&_h1]:text-[10px] [&_h2]:text-[14px] [&_h3]:text-[12px] [&_li]:text-xs">
                         <ReactMarkdown>{answer}</ReactMarkdown>
                       </article>
                     ) : (
                       <div className="m-auto flex max-w-[390px] flex-col items-center text-center">
-                        <span className="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-[#e8f0eb] font-[Manrope] text-2xl font-extrabold text-[#32664f]">
+                        <span className="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-[#e8f0eb] font-[Manrope] text-xl font-extrabold text-[#32664f]">
                           e
                         </span>
-                        <p className="m-0 text-sm leading-6 text-[#819087]">
+                        <p className="m-0 text-research-empty text-[#819087]">
                           Choose a source file, then ask a focused question
                           about its obligations, dates, or risks.
                         </p>
@@ -274,7 +274,7 @@ function ResearchPage({ user, token, onLogout }: ResearchPageProps) {
                 </div>
                 {/* Enter submits a question; Shift+Enter creates a new line. */}
                 <form
-                  className="mx-4 mb-1 mt-3 flex shrink-0 items-end gap-2 rounded-xl border border-[#dfe6e0] bg-white p-2 shadow-[0_3px_12px_#183d2a0b] md:mx-auto md:w-[min(820px,calc(100%-3rem))]"
+                  className="mx-4 mb-1 mt-3 text-xs flex shrink-0 items-end gap-2 rounded-xl border border-[#dfe6e0] bg-white p-2 shadow-[0_3px_12px_#183d2a0b] md:mx-auto md:w-[min(820px,calc(100%-3rem))]"
                   onSubmit={(event) => {
                     event.preventDefault();
                     void runResearch();
@@ -289,7 +289,7 @@ function ResearchPage({ user, token, onLogout }: ResearchPageProps) {
                         void runResearch();
                       }
                     }}
-                    className="max-h-32 min-w-0 flex-1 resize-y border-0 bg-transparent px-2 py-2 text-sm leading-6 text-[#48574e] outline-none placeholder:text-[#a3aca6]"
+                    className="max-h-32 min-w-0 flex-1 resize-y border-0 bg-transparent px-2 py-2 text-chat-meta text-xs text-[#48574e] outline-none placeholder:text-[#a3aca6]"
                     placeholder="Ask about this document…"
                     aria-label="Ask a research question"
                     rows={1}
