@@ -54,7 +54,13 @@ def max_pdf_pages() -> int:
 
 def max_upload_bytes() -> int:
     return integer_setting(
-        "MAX_UPLOAD_BYTES", 25 * 1024 * 1024, minimum=1024 * 1024, maximum=1024 * 1024 * 1024
+        "MAX_UPLOAD_BYTES", 15 * 1024 * 1024, minimum=1024 * 1024, maximum=1024 * 1024 * 1024
+    )
+
+
+def max_documents_per_user() -> int:
+    return integer_setting(
+        "MAX_DOCUMENTS_PER_USER", 3, minimum=1, maximum=1000
     )
 
 

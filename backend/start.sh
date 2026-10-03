@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 # Run background ingestion worker with auto-restart on unexpected exit
@@ -15,17 +15,19 @@ run_worker &
 WORKER_PID=$!
 
 cleanup() {
-    echo "[Entrypoint] Received termination signal. Stopping services..."
+    trap - TERM INT EXIT
+    echo "[Entrypoint] Stopping services..."
     kill -TERM "$WORKER_PID" 2>/dev/null || true
     wait "$WORKER_PID" 2>/dev/null || true
     exit 0
 }
 
-trap cleanup SIGTERM SIGINT
+trap cleanup TERM INT
 
 echo "[Entrypoint] Starting Uvicorn Web Server on port ${PORT:-8000}..."
-uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}" --workers "${WORKERS:-1}" &
+uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}" --workers "${WORKERS:-${WEB_CONCURRENCY:-1}}" &
 SERVER_PID=$!
 
 wait "$SERVER_PID"
 cleanup
+

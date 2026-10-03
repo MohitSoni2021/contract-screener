@@ -411,3 +411,35 @@ def test_extraction_from_bytes_pdf_and_docx(tmp_path: Path):
 
     extracted_docx = extract_document(docx_bytes, ".docx")
     assert "Confidential terms and conditions." in extracted_docx.text
+
+
+def test_upload_validation_rejects_oversized_file_over_15mb():
+    limit_15mb = 15 * 1024 * 1024
+    # 15MB file is accepted
+    validate_upload_content(".pdf", limit_15mb, b"%PDF-1.7", limit_15mb)
+    # File larger than 15MB is rejected with 413
+    with pytest.raises(HTTPException) as exc_info:
+        validate_upload_content(".pdf", limit_15mb + 1, b"%PDF-1.7", limit_15mb)
+    assert exc_info.value.status_code == 413
+    assert "15 MB" in exc_info.value.detail
+
+
+@pytest.mark.anyio
+async def test_upload_document_enforces_max_docs_limit():
+    from app.routers.documents import upload_document
+
+    class FakeDocsCollection:
+        def __init__(self, count):
+            self._count = count
+
+        async def count_documents(self, query):
+            return self._count
+
+    database = SimpleNamespace(documents=FakeDocsCollection(count=3))
+    user = SimpleNamespace(id="test-user")
+    fake_file = SimpleNamespace(filename="test.pdf")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await upload_document(file=fake_file, user=user, database=database)
+    assert exc_info.value.status_code == 400
+    assert "maximum of 3 documents" in exc_info.value.detail

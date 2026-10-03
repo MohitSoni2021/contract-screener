@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 from pydantic import BaseModel
 from pymongo.errors import DuplicateKeyError
 
-from app.config import max_upload_bytes
+from app.config import max_documents_per_user, max_upload_bytes
 from app.dependencies import AuthenticatedUser, get_current_user, get_database
 from app.services.qdrant_repository import create_qdrant_client, delete_document_vectors
 from app.services.comparison import compare_documents
@@ -42,7 +42,7 @@ def validate_upload_content(extension: str, size: int, header: bytes, limit: int
         raise HTTPException(status_code=400, detail="The selected file is empty.")
     if size > limit:
         limit_mb = limit // (1024 * 1024)
-        raise HTTPException(status_code=413, detail=f"File is larger than the configured {limit_mb} MB upload limit.")
+        raise HTTPException(status_code=413, detail=f"File exceeds the {limit_mb} MB upload limit. Files must be less than {limit_mb} MB.")
     if extension == ".pdf" and b"%PDF-" not in header:
         raise HTTPException(status_code=415, detail="This file does not appear to be a valid PDF.")
     if extension == ".docx" and not header.startswith(b"PK"):
@@ -82,6 +82,17 @@ async def upload_document(
     user: AuthenticatedUser = Depends(get_current_user),
     database: Any = Depends(get_database),
 ) -> dict[str, Any]:
+    # Enforce maximum documents per user limit
+    max_docs = max_documents_per_user()
+    current_doc_count = await database.documents.count_documents(
+        {"owner_id": user.id, "active": True}
+    )
+    if current_doc_count >= max_docs:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Upload limit reached: You can upload a maximum of {max_docs} documents. Please delete an existing document before uploading a new one.",
+        )
+
     original_name = Path(file.filename or "document").name
     extension = Path(original_name).suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:
