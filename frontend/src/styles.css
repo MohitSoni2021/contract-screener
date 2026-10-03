@@ -63,6 +63,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
+  flex-wrap: wrap;
 }
 .research-demo-button {
   padding: 10px 12px;
@@ -78,6 +79,21 @@
 .research-demo-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+.research-log-button,
+.research-modal-close {
+  border: 1px solid #cbdacf;
+  border-radius: 6px;
+  background: #fff;
+  color: #3f7655;
+  font: 600 10px "DM Sans", sans-serif;
+  cursor: pointer;
+}
+.research-log-button {
+  padding: 10px 12px;
+}
+.research-log-button:hover {
+  background: #f1f7f2;
 }
 .research-limit-note {
   padding-top: 13px;
@@ -148,6 +164,91 @@
   font-size: 12px;
   line-height: 1.7;
   white-space: pre-wrap;
+}
+.research-answer > :first-child {
+  margin-top: 0;
+}
+.research-answer > :last-child {
+  margin-bottom: 0;
+}
+.research-answer h1,
+.research-answer h2,
+.research-answer h3 {
+  margin: 1.1em 0 0.45em;
+  color: #294238;
+  font: 700 15px/1.35 Manrope, sans-serif;
+}
+.research-answer h3 {
+  font-size: 13px;
+}
+.research-answer ul,
+.research-answer ol {
+  margin: 0.5em 0 1em;
+  padding-left: 1.4em;
+  color: #385245;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.research-answer li {
+  margin: 0.25em 0;
+}
+.research-answer strong {
+  color: #294238;
+}
+.research-answer blockquote {
+  margin: 0.8em 0;
+  padding-left: 12px;
+  border-left: 3px solid #c8dace;
+  color: #627269;
+}
+.research-answer code {
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: #e7f0e9;
+  font-size: 0.9em;
+}
+.research-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(23, 48, 38, 0.3);
+}
+.research-trace-modal {
+  display: flex;
+  width: min(680px, 100%);
+  max-height: min(720px, 90dvh);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #dfe8e1;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(23, 48, 38, 0.22);
+}
+.research-trace-modal .research-output-header {
+  flex: 0 0 auto;
+}
+.research-modal-subtitle {
+  margin: 5px 0 0;
+  color: #849188;
+  font-size: 11px;
+}
+.research-modal-close {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+}
+.research-modal-close:hover {
+  background: #f1f7f2;
+}
+.research-trace-modal .research-activity {
+  min-height: 180px;
 }
 .research-app-shell .page-footer {
   margin-top: auto;
