@@ -215,14 +215,8 @@ function ResearchPage({ user, token, onLogout }: ResearchPageProps) {
           userName={user.name}
           onLogout={onLogout}
         />
-        <section className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex min-h-0 flex-1 flex-col">
-            {/* Main research surface plus the persistent process-log sidebar. */}
-            <div className="min-h-0 flex-1">
-              <section
-                className="flex min-h-0 min-w-0 flex-col bg-[#f6f7f4]"
-                aria-label="Source document research"
-              >
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#f6f7f4]">
+          <section className="flex min-h-0 flex-1 flex-col" aria-label="Source document research">
                 <header className="flex shrink-0 items-center gap-3 border-b border-[#e5ebe6] bg-white px-5 py-3 md:px-10">
                   <DocumentDropdown
                     documents={ready}
@@ -313,9 +307,7 @@ function ResearchPage({ user, token, onLogout }: ResearchPageProps) {
                   Answers are grounded in retrieved passages. Verify important
                   terms in the original source.
                 </div>
-              </section>
-            </div>
-          </div>
+          </section>
         </section>
       </div>
     </main>
