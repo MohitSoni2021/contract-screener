@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, AsyncIterator
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
@@ -340,6 +340,7 @@ async def _json_final_answer(model: AsyncOpenAI, *, question: str, system_prompt
         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}],
         temperature=0.1,
         max_tokens=research_max_tokens(),
+        response_format={"type": "json_object"},
     )
     text = (response.choices[0].message.content or "{}").strip()
     if text.startswith("```"):
@@ -349,8 +350,27 @@ async def _json_final_answer(model: AsyncOpenAI, *, question: str, system_prompt
         parsed = json.loads(text)
     except json.JSONDecodeError:
         return {"summary": text[:500], "findings": [], "notFound": [], "notChecked": not_checked}
+
+    # Some model responses wrap the actual answer JSON inside the summary
+    # string. Unwrap it at the API boundary so clients never receive raw JSON
+    # as user-facing prose.
+    nested_summary = parsed.get("summary") if isinstance(parsed, dict) else None
+    if isinstance(nested_summary, str):
+        nested_text = nested_summary.strip()
+        if nested_text.startswith("```"):
+            nested_text = re.sub(r"^```(?:json)?\s*", "", nested_text)
+            nested_text = re.sub(r"\s*```$", "", nested_text)
+        try:
+            nested = json.loads(nested_text)
+        except json.JSONDecodeError:
+            nested = None
+        if isinstance(nested, dict):
+            parsed = {**nested, **{key: value for key, value in parsed.items() if key != "summary" and value}}
+    summary = parsed.get("summary")
+    if not isinstance(summary, str) or summary.lstrip().startswith("{"):
+        summary = "The document was reviewed, but the model did not return a readable summary. Please ask the question again."
     return {
-        "summary": str(parsed.get("summary") or "I could not establish a final answer from the checked sections."),
+        "summary": summary,
         "findings": parsed.get("findings") if isinstance(parsed.get("findings"), list) else [],
         "notFound": parsed.get("notFound") if isinstance(parsed.get("notFound"), list) else [],
         "notChecked": parsed.get("notChecked") if isinstance(parsed.get("notChecked"), list) else not_checked,
@@ -483,3 +503,27 @@ async def stream_research(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("")
+async def research(
+    payload: ResearchRequest,
+    request: Request,
+    user: AuthenticatedUser = Depends(get_current_user),
+    database: Any = Depends(get_database),
+) -> JSONResponse:
+    """Run research to completion and return only the final structured answer."""
+    final_event: dict[str, Any] | None = None
+    async for frame in run_agentic_research(request=request, payload=payload, user=user, database=database, conversation_id=None):
+        if not frame.startswith("event: final\n"):
+            if frame.startswith("event: error\n"):
+                data_line = next((line for line in frame.splitlines() if line.startswith("data: ")), "data: {}")
+                error = json.loads(data_line.removeprefix("data: "))
+                return JSONResponse(status_code=502, content=error)
+            continue
+        data_line = next((line for line in frame.splitlines() if line.startswith("data: ")), "data: {}")
+        final_event = json.loads(data_line.removeprefix("data: "))
+        break
+    if final_event is None:
+        return JSONResponse(status_code=502, content={"message": "Research did not return a final answer."})
+    return JSONResponse(content=final_event)
