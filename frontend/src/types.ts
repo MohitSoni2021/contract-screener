@@ -66,3 +66,47 @@ export type ChatConversation = {
   created_at: string
   updated_at: string
 }
+
+export type ProposedRedline = {
+  clauseTitle: string
+  targetText: string
+  revisedText: string
+  contextSentence?: string
+  explanation: string
+}
+
+export type RedlineStagedEdit = {
+  id: string
+  clauseTitle: string
+  targetText: string
+  revisedText: string
+  explanation: string
+  applied: boolean
+}
+
+export type CompareCitation = {
+  documentId: string
+  documentName?: string
+  quote: string
+  pageNumber?: number | null
+  blockNumber?: number | null
+  verified?: boolean
+}
+
+export type CompareSummary = {
+  totalSections: number
+  modifiedCount: number
+  addedCount: number
+  deletedCount: number
+  unchangedCount?: number
+}
+
+export type CompareChatMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  citations?: CompareCitation[]
+  summary?: CompareSummary
+  insufficientEvidence?: boolean
+  timestamp: string
+}

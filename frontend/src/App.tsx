@@ -5,6 +5,7 @@ import WorkspacePage from './pages/WorkspacePage'
 import ChatPage from './pages/ChatPage'
 import CompareDocPage from './pages/CompareDocPage'
 import ResearchPage from './pages/ResearchPage'
+import RedlinePage from './pages/RedlinePage'
 import type { AuthSession, User } from './types'
 import { apiUrl } from './config'
 
@@ -97,6 +98,22 @@ function App() {
         element={(
           <ProtectedRoute user={user} restoring={restoring}>
             {user && <ResearchPage user={user} token={token} onLogout={logout} />}
+          </ProtectedRoute>
+        )}
+      />
+      <Route
+        path="/redline"
+        element={(
+          <ProtectedRoute user={user} restoring={restoring}>
+            {user && <RedlinePage user={user} token={token} onLogout={logout} />}
+          </ProtectedRoute>
+        )}
+      />
+      <Route
+        path="/redline/:id"
+        element={(
+          <ProtectedRoute user={user} restoring={restoring}>
+            {user && <RedlinePage user={user} token={token} onLogout={logout} />}
           </ProtectedRoute>
         )}
       />
