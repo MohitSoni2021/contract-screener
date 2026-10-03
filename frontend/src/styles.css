@@ -288,11 +288,8 @@
     height: 100dvh !important;
     box-shadow: 12px 0 28px rgba(24, 61, 42, 0.14);
   }
-  .comparison-sidebar-collapsed {
-    width: 70px !important;
-  }
-  .comparison-sidebar-collapsed .sidebar-collapse-button {
-    right: 21px;
+  .comparison-sidebar-hidden {
+    width: 0 !important;
   }
 }
 .comparison-sources button {
@@ -346,21 +343,32 @@ body {
   top: 0 !important;
   height: 100% !important;
   transition:
-    width 0.2s ease,
-    padding 0.2s ease;
+    width 0.22s ease,
+    padding 0.22s ease,
+    min-width 0.22s ease;
   z-index: 20;
+  overflow: hidden;
 }
-.comparison-sidebar .comparison-sidebar-brand {
+.comparison-sidebar-brand {
   height: 35px;
   margin: -20px 0 20px;
   display: flex;
   align-items: center;
 }
-.comparison-sidebar .sidebar-collapse-button {
+/* Sidebar wrapper — holds aside + external toggle button */
+.comparison-sidebar-wrap {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  height: 100%;
+}
+
+/* Toggle button — always visible at the edge */
+.sidebar-toggle-button {
   position: absolute;
   top: 13px;
-  right: 10px;
-  z-index: 2;
+  right: -14px;
+  z-index: 30;
   width: 28px;
   height: 28px;
   border: 1px solid #e1e8e2;
@@ -370,39 +378,33 @@ body {
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
-}
-.comparison-sidebar-collapsed {
-  width: 70px !important;
-  padding-right: 11px !important;
-  padding-left: 11px !important;
-}
-.comparison-sidebar-collapsed .sidebar-text,
-.comparison-sidebar-collapsed .sidebar-label,
-.comparison-sidebar-collapsed .sidebar-divider,
-.comparison-sidebar-collapsed .recent-label,
-.comparison-sidebar-collapsed .sidebar-footer,
-.comparison-sidebar-collapsed .sidebar-account {
-  display: none;
-}
-.comparison-sidebar-collapsed .comparison-sidebar-brand {
-  overflow: hidden;
-  width: 36px;
-  margin-left: 5px;
-}
-.comparison-sidebar-collapsed .nav-item {
+  display: flex;
+  align-items: center;
   justify-content: center;
-  padding-left: 8px;
-  padding-right: 8px;
+  box-shadow: 0 2px 8px rgba(24,61,42,0.10);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
 }
-.comparison-sidebar-collapsed .sidebar-add-button {
-  justify-content: center;
-  padding-left: 8px;
-  padding-right: 8px;
+.sidebar-toggle-button:hover {
+  background: #edf5ef;
+  box-shadow: 0 3px 12px rgba(24,61,42,0.15);
 }
-.comparison-sidebar-collapsed .recent-document {
-  justify-content: center;
-  padding-left: 5px;
-  padding-right: 5px;
+
+/* When hidden: wrapper has no width so main panel expands */
+.sidebar-wrap-hidden {
+  width: 0;
+}
+.sidebar-wrap-hidden .sidebar-toggle-button {
+  right: -28px;
+}
+
+/* Full-hide: sidebar slides to width 0 */
+.comparison-sidebar-hidden {
+  width: 0 !important;
+  min-width: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  overflow: hidden !important;
+  border-right: none !important;
 }
 .comparison-main-panel {
   display: flex;
@@ -420,7 +422,9 @@ body {
 }
 .comparison-main-panel > .comparison-section {
   width: 100%;
-  margin: 0 auto 16px;
+  flex: 1;
+  min-height: 0;
+  margin: 0 auto;
 }
 .comparison-main-panel > .comparison-empty-state {
   width: 100%;
@@ -837,7 +841,9 @@ body {
 }
 .comparison-section {
   display: flex;
+  flex: 1;
   min-height: 0;
+  height: 100%;
   margin-top: 0;
 }
 .comparison-heading {

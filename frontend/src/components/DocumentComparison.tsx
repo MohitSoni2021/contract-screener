@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ComparisonChange, UploadedDocument } from "../types";
+import DocumentDropdown from "./DocumentDropdown";
 
 type Props = { documents: UploadedDocument[]; token: string };
 
@@ -64,7 +65,7 @@ function DocumentComparison({ documents, token }: Props) {
 
   return (
     <section
-      className={`comparison-section flex min-h-0 min-w-fit overflow-y-scroll w-full flex-col ${changes.length > 0 ? " flex-1" : ""}`}
+      className="comparison-section flex min-h-0 min-w-fit overflow-y-scroll w-full flex-col"
       aria-labelledby="comparison-title"
     >
       <div className="comparison-heading">
@@ -87,32 +88,22 @@ function DocumentComparison({ documents, token }: Props) {
       <div className="comparison-controls">
         <label>
           Earlier version
-          <select
+          <DocumentDropdown
+            documents={ready}
             value={oldId}
-            onChange={(event) => setOldId(event.target.value)}
-          >
-            <option value="">Select a document</option>
-            {ready.map((document) => (
-              <option key={document.document_id} value={document.document_id}>
-                {document.filename}
-              </option>
-            ))}
-          </select>
+            onChange={setOldId}
+            placeholder="Select a document"
+          />
         </label>
         <span className="comparison-arrow">→</span>
         <label>
           Later version
-          <select
+          <DocumentDropdown
+            documents={ready}
             value={newId}
-            onChange={(event) => setNewId(event.target.value)}
-          >
-            <option value="">Select a document</option>
-            {ready.map((document) => (
-              <option key={document.document_id} value={document.document_id}>
-                {document.filename}
-              </option>
-            ))}
-          </select>
+            onChange={setNewId}
+            placeholder="Select a document"
+          />
         </label>
         <button
           className="comparison-button"
