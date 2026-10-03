@@ -6,7 +6,7 @@ import type { User } from '../types'
 import type { AppDispatch, RootState } from '../store/store'
 import { fetchDocuments } from '../store/documentsSlice'
 
-type Activity = { round?: number; tool?: string; message: string }
+type Activity = { round?: number; tool?: string; message: string; status?: string }
 type ResearchPageProps = { user: User; token: string; onLogout: () => void }
 
 async function consumeEvents(response: Response, onEvent: (name: string, data: Record<string, unknown>) => void) {
@@ -33,7 +33,7 @@ async function consumeEvents(response: Response, onEvent: (name: string, data: R
 function ResearchPage({ user, token, onLogout }: ResearchPageProps) {
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
-  const { items: documents, loading } = useSelector((state: RootState) => state.documents)
+  const { items: documents } = useSelector((state: RootState) => state.documents)
   const ready = documents.filter((document) => document.status === 'ready')
   const [documentId, setDocumentId] = useState('')
   const [question, setQuestion] = useState('What are the key obligations, deadlines, and liability risks in this document?')
@@ -51,9 +51,14 @@ function ResearchPage({ user, token, onLogout }: ResearchPageProps) {
       const response = await fetch('/api/research/stream', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ document_id: documentId, question: prompt }) })
       if (!response.ok) { const body = await response.json().catch(() => ({})) as { detail?: string }; throw new Error(body.detail ?? 'Research could not be started.') }
       await consumeEvents(response, (name, data) => {
-        if (name === 'activity') setActivity((current) => [...current, { round: data.round as number | undefined, tool: data.tool as string | undefined, message: String(data.message ?? '') }])
-        if (name === 'token') setAnswer(String(data.text ?? ''))
-        if (name === 'done') setAnswer(String(data.content ?? ''))
+        if (name === 'status') setActivity((current) => [...current, { message: String(data.message ?? '') }])
+        if (name === 'tool_start') setActivity((current) => [...current, { tool: String(data.tool ?? ''), message: String(data.label ?? 'Using document tool…') }])
+        if (name === 'tool_result') setActivity((current) => [...current, { tool: String(data.tool ?? ''), message: String(data.summary ?? ''), status: data.ok ? 'done' : 'failed' }])
+        if (name === 'answer_delta') setAnswer((current) => current ? `${current}\n\n${String(data.text ?? '')}` : String(data.text ?? ''))
+        if (name === 'final') {
+          const finalAnswer = data.answer as { summary?: string } | undefined
+          setAnswer(String(finalAnswer?.summary ?? ''))
+        }
         if (name === 'error') setError(String(data.message ?? 'Research failed.'))
       })
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Research could not be completed.') }

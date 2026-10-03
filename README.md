@@ -108,3 +108,9 @@ The submission also needs screenshots, a deployed link, and a 3–5 minute demo 
 - [Architecture and isolation](docs/architecture.md)
 - [Data model](docs/data-model.md)
 - [Implementation plan](docs/implementation-plan.md)
+
+## Agentic research
+
+The authenticated `/research` workspace adds bounded contract research without replacing ordinary chat. The model receives strict document tools instead of the full document in its prompt: it can list clauses, read a section, search canonical text, inspect definitions, and read a page. Tool calls are validated, repeated calls are suppressed, and the loop stops at the configured round limit. Final findings keep only quotes that match canonical extracted text.
+
+Set `RESEARCH_MAX_ROUNDS` and `RESEARCH_MAX_TOKENS` in `backend/.env`. The server clamps these values to 1–8 rounds and 500–12,000 tokens. The selected `OPENROUTER_CHAT_MODEL` must support OpenAI-compatible tool/function calling.

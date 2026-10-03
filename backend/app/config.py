@@ -83,7 +83,7 @@ def qdrant_timeout_seconds() -> float:
 
 
 def research_max_rounds() -> int:
-    return integer_setting("RESEARCH_MAX_ROUNDS", 4, minimum=1, maximum=8)
+    return integer_setting("RESEARCH_MAX_ROUNDS", 8, minimum=1, maximum=8)
 
 
 def research_max_tokens() -> int:

@@ -38,6 +38,7 @@ class ChatStreamRequest(BaseModel):
     document_id: str = Field(min_length=1, max_length=64)
     conversation_id: str | None = Field(default=None, max_length=64)
     question: str = Field(min_length=1, max_length=MAX_QUESTION_CHARACTERS)
+    mode: str = Field(default="chat", max_length=32)
 
     @field_validator("question")
     @classmethod
@@ -669,6 +670,21 @@ async def stream_chat(
             "created_at": now,
             "updated_at": now,
         })
+
+    if payload.mode.lower() == "agent":
+        from app.routers.research import run_agentic_research
+        return StreamingResponse(
+            run_agentic_research(
+                request=request,
+                payload={"document_id": payload.document_id, "question": payload.question},
+                user=user,
+                database=database,
+                conversation_id=conversation_id,
+            ),
+            media_type="text/event-stream",
+            status_code=status.HTTP_200_OK,
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     history = await _conversation_history(database, conversation_id)
     user_message_id = str(uuid4())

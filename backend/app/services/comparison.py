@@ -49,7 +49,7 @@ def _classify(old: str, new: str) -> tuple[str, str, str]:
     old_numbers = _NUMBER_RE.findall(old)
     new_numbers = _NUMBER_RE.findall(new)
     has_material_terms = _SUBSTANTIVE_RE.search(old) or _SUBSTANTIVE_RE.search(new)
-    if old_numbers != new_numbers or (has_material_terms and _similarity(old, new) < 0.92):
+    if old_numbers != new_numbers or (has_material_terms and _similarity(old, new) < 0.75):
         return "substantive", "substantive", _plain_summary(old, new)
     return "wording", "wording", "The wording changed without an apparent change to the commercial terms."
 

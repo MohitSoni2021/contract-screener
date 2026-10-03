@@ -12,6 +12,11 @@ from fastapi import HTTPException
 from app.routers.documents import validate_upload_content
 from app.routers import chat
 from app.routers.chat import _verified_sources
+from app.routers.research import (
+    build_document_index,
+    is_repeated_tool_call,
+    validate_tool_call,
+)
 from app.services.extraction import extract_document
 from app.services.comparison import compare_documents
 from app.services.extraction import ExtractedDocument, SourceBlock
@@ -120,6 +125,37 @@ def test_document_comparison_detects_formatting_only_and_wording_changes():
     assert compare_documents(old, new, "old", "new")[0]["change_type"] == "formatting"
     new = ExtractedDocument("", [SourceBlock("Payment must be made within 30 days.", 0, 1)], 0)
     assert compare_documents(old, new, "old", "new")[0]["change_type"] == "wording"
+
+
+def test_contract_index_builds_clause_and_definition_index():
+    contract = """
+    1. Termination
+    Either party may terminate for cause.
+    1.1 Renewal
+    This Agreement renews automatically unless notice is given.
+    Definitions. "Confidential Information" means any non-public information.
+    Section 5. Liability. Supplier liability is capped at $50,000.
+    """
+    index = build_document_index(contract)
+    assert index["quality"] in {"strong", "weak"}
+    assert len(index["clauses"]) >= 3
+    assert any(clause["number"] == "1.1" for clause in index["clauses"])
+    assert any(item["term"] == "Confidential Information" for item in index["definitions"])
+
+
+def test_agent_tool_validation_rejects_unknown_and_invalid_calls():
+    error = validate_tool_call("foo", '{"q": "x"}')
+    assert "unknown tool" in error.lower()
+    assert "list_clauses" in error
+
+    error = validate_tool_call("get_section", '{"number": 9999}')
+    assert "number" in error.lower()
+
+
+def test_agent_repeated_call_detector_and_round_cap_guard():
+    call = {"tool": "search_document", "arguments": {"query": "termination"}}
+    assert is_repeated_tool_call(call, [call]) is True
+    assert is_repeated_tool_call(call, []) is False
 
 
 class FakeMessages:

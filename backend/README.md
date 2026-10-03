@@ -45,6 +45,7 @@ The API checks MongoDB connectivity and creates user, token, and one-active-docu
 - `GET /api/documents/{document_id}/conversations` — lists saved chats for the active document.
 - `GET /api/conversations/{conversation_id}` — reopens one saved conversation for its owner.
 - `POST /api/chat/stream` — retrieves owner/document-scoped passages, streams the answer as SSE, and saves the exchange.
+- `POST /api/research/stream` — runs bounded tool-calling contract research and emits `status`, `tool_start`, `tool_result`, `final`, `answer_delta`, and `error` SSE events.
 - `GET /api/documents/{document_id}/file` — serves the original file to its authenticated owner for source navigation.
 - `DELETE /api/documents/{document_id}` — removes the finished or failed document and its Qdrant vectors.
 
@@ -64,3 +65,7 @@ The first release supports text-based PDFs and DOCX files. It rejects PDFs witho
 ## Current limitations
 
 Semantic retrieval is bounded to the six highest ranked chunks; it cannot prove that a clause is absent from a large document. PDF citations open the cited page and highlight matching text-layer spans; the verified quote remains visible beside the viewer because PDF text segmentation can differ from the extracted passage. DOCX citations show the verified excerpt and block location without an in-browser DOCX renderer. The starter queue has no separate broker, automatic retry policy for application-level failures, or object storage; workers must share the API's upload filesystem. OCR, email verification, password reset, rate limiting, refresh tokens, and production cookie sessions are also not implemented. The frontend keeps its access token in localStorage. Keep `.env` out of Git, use a least-privilege MongoDB user, and restrict MongoDB/Qdrant network access before deployment.
+
+## Agentic research
+
+Research uses the same authenticated document ownership and canonical extracted text as chat. The model calls strict tools for clause indexes, sections, searches, definitions, and pages; document text is not inserted wholesale into the planning prompt. Tool names and JSON arguments are validated, identical calls are suppressed, and the loop is capped by `RESEARCH_MAX_ROUNDS` (default 8, server maximum 8). Final output is limited by `RESEARCH_MAX_TOKENS` (default 3200, server range 500–12,000) and returned as structured findings with verified exact quotes. The configured `OPENROUTER_CHAT_MODEL` must support OpenAI-compatible function calling.
