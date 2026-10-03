@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
+import { FileText, ChevronDown, Check } from "lucide-react";
 import WorkspaceSidebar from "../components/WorkspaceSidebar";
 import type { UploadedDocument, User } from "../types";
 import type { AppDispatch, RootState } from "../store/store";
@@ -90,13 +91,13 @@ function DocumentDropdown({
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#bfd2c4] bg-white text-xl leading-none text-[#3f7655] shadow-sm transition group-hover:bg-[#edf5ef]">
-          +
+        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-[#edf4ef] text-[#2c5b41]">
+          <FileText className="h-3.5 w-3.5" />
         </span>
         <span className="min-w-0 truncate font-medium text-xs">
           {selected?.filename ?? "Add source document"}
         </span>
-        <span className="text-[#789080]">⌄</span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-[#8aa093] transition group-hover:text-[#4d6c5b]" />
       </button>
       {open && (
         <div
@@ -130,7 +131,7 @@ function DocumentDropdown({
                 </span>
                 <span className="min-w-0 truncate">{document.filename}</span>
                 {document.document_id === value && (
-                  <span className="ml-auto text-[#4d8066]">✓</span>
+                  <Check className="ml-auto h-3.5 w-3.5 text-[#2b6446]" />
                 )}
               </button>
             ))

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Files, GitCompare, Sparkles, FilePenLine, Plus } from "lucide-react";
 import type { UploadedDocument } from "../types";
 import Brand from "./Brand";
 
@@ -68,33 +69,66 @@ function WorkspaceSidebar({
           </div>
         )}
         <div className="sidebar-label">WORKSPACE</div>
-        <button
-          className={`nav-item ${location.pathname === "/workspace" ? "active" : ""}`}
-          onClick={() => navigate("/workspace")}
-        >
-          <span className="nav-icon">▤</span>{" "}
-          <span className="sidebar-text">My documents</span>
-        </button>
-        <button
-          className={`nav-item ${location.pathname === "/compare-doc" ? "active" : ""}`}
-          onClick={() => navigate("/compare-doc")}
-        >
-          <span className="nav-icon">⇄</span>{" "}
-          <span className="sidebar-text">Compare documents</span>
-        </button>
-        <button
-          className={`nav-item ${location.pathname === "/research" ? "active" : ""}`}
-          onClick={() => navigate("/research")}
-        >
-          <span className="nav-icon">⌁</span>{" "}
-          <span className="sidebar-text">Agent research</span>
-        </button>
-        <button
-          className="sidebar-add-button"
-          onClick={() => fileInput.current?.click()}
-        >
-          <span>+</span> <span className="sidebar-text">Add document</span>
-        </button>
+        <div className="flex flex-col gap-1.5 mt-3">
+          <button
+            className={`py-2 px-3.5 text-xs rounded-lg text-start gap-2.5 flex items-center transition font-medium ${
+              location.pathname === "/workspace"
+                ? "bg-white text-[#214f36] shadow-2xs font-semibold"
+                : "text-[#546b5e] hover:bg-[#edf3ee]"
+            }`}
+            onClick={() => navigate("/workspace")}
+          >
+            <Files className="h-4 w-4 shrink-0 text-[#426b54]" />
+            <span className="sidebar-text">My documents</span>
+          </button>
+          <button
+            className={`py-2 px-3.5 text-xs rounded-lg text-start gap-2.5 flex items-center transition font-medium ${
+              location.pathname === "/compare-doc"
+                ? "bg-white text-[#214f36] shadow-2xs font-semibold"
+                : "text-[#546b5e] hover:bg-[#edf3ee]"
+            }`}
+            onClick={() => navigate("/compare-doc")}
+          >
+            <GitCompare className="h-4 w-4 shrink-0 text-[#426b54]" />
+            <span className="sidebar-text">Compare documents</span>
+          </button>
+          <button
+            className={`py-2 px-3.5 text-xs rounded-lg text-start gap-2.5 flex items-center transition font-medium ${
+              location.pathname === "/research"
+                ? "bg-white text-[#214f36] shadow-2xs font-semibold"
+                : "text-[#546b5e] hover:bg-[#edf3ee]"
+            }`}
+            onClick={() => navigate("/research")}
+          >
+            <Sparkles className="h-4 w-4 shrink-0 text-[#426b54]" />
+            <span className="sidebar-text">Agent research</span>
+          </button>
+          <button
+            className={`py-2 px-3.5 text-xs rounded-lg text-start gap-2.5 flex items-center transition font-medium ${
+              location.pathname.startsWith("/redline")
+                ? "bg-white text-[#214f36] shadow-2xs font-semibold"
+                : "text-[#546b5e] hover:bg-[#edf3ee]"
+            }`}
+            onClick={() => navigate("/redline")}
+          >
+            <FilePenLine className="h-4 w-4 shrink-0 text-[#426b54]" />
+            <span className="sidebar-text">Redline &amp; Export</span>
+          </button>
+
+          <button
+            className="mt-1 flex items-center justify-center gap-2 rounded-lg border border-[#cfddd3] bg-white px-3 py-2 text-xs font-semibold text-[#25523a] shadow-2xs transition hover:border-[#25523a] hover:bg-[#f5faf6] disabled:opacity-50"
+            onClick={() => fileInput.current?.click()}
+            title={
+              documents.length >= 3
+                ? "Document limit reached (3/3 docs)"
+                : "Upload a document (max 3 docs, < 15 MB)"
+            }
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span className="text-xs">Add document ({documents.length}/3)</span>
+          </button>
+        </div>
+
         <input
           ref={fileInput}
           className="visually-hidden"

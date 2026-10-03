@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
+import { Sparkles } from 'lucide-react'
 import type { ChatCitation, ChatConversation, ChatCoverage, ChatMessage, UploadedDocument, User } from '../types'
 import Brand from './Brand'
 import { apiUrl } from '../config'
@@ -422,7 +423,7 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
             {selectedCitation && <span className="source-verified-badge">✓ Verified</span>}
           </header>
           {sourcePanelStatus && <div className="source-panel-status" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" />{sourcePanelStatus}</div>}
-          {!sourcePanelStatus && verifiedCitations.length === 0 && <div className="source-panel-empty"><span className="source-empty-mark">⌁</span><strong>Sources will appear here</strong><p>Verified source passages from your answer will be shown in this panel.</p></div>}
+          {!sourcePanelStatus && verifiedCitations.length === 0 && <div className="source-panel-empty"><span className="source-empty-mark flex items-center justify-center"><Sparkles className="h-4 w-4 text-[#738e7d]" /></span><strong>Sources will appear here</strong><p>Verified source passages from your answer will be shown in this panel.</p></div>}
           {verifiedCitations.length > 0 && <div className="source-panel-body">
             <div className="source-panel-list" aria-label="Verified source passages">
               {verifiedCitations.map((citation) => <button key={citation.chunk_id} type="button" className={`source-panel-card ${selectedCitation?.chunk_id === citation.chunk_id ? 'selected' : ''}`} onClick={() => setSelectedCitation(citation)}><span className="source-panel-card-top"><span className="citation-check">✓</span><strong>{citation.source_id}</strong><span>{citationLocation(citation, isPdf)}</span></span><span className="source-panel-card-quote">{citation.quote}</span></button>)}

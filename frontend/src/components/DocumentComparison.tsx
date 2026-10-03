@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MessageSquare, GitCompare, ArrowRight, FileText, ExternalLink } from "lucide-react";
+import { MessageSquare, GitCompare, ArrowRight } from "lucide-react";
 import type { ComparisonChange, UploadedDocument } from "../types";
 import DocumentDropdown from "./DocumentDropdown";
 import CompareChat from "./CompareChat";
@@ -289,16 +289,6 @@ function significanceRank(value: ComparisonChange["significance"]) {
       : value === "formatting"
         ? 1
         : 0;
-}
-
-async function openSource(document: UploadedDocument, token: string) {
-  const response = await fetch(apiUrl(`/api/documents/${document.document_id}/file`), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) return;
-  const url = URL.createObjectURL(await response.blob());
-  window.open(url, "_blank", "noopener,noreferrer");
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 export default DocumentComparison;
