@@ -1,10 +1,14 @@
+import io
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Union
 
 import fitz
 from docx import Document
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+
+SourceType = Union[Path, str, bytes]
 
 
 @dataclass(frozen=True)
@@ -25,8 +29,20 @@ def _join_blocks(blocks: list[SourceBlock]) -> str:
     return "\n".join(block.text for block in blocks)
 
 
-def pdf_page_count(path: Path) -> int:
-    with fitz.open(path) as document:
+def _open_pdf(source: SourceType) -> fitz.Document:
+    if isinstance(source, bytes):
+        return fitz.open(stream=source, filetype="pdf")
+    return fitz.open(source)
+
+
+def _open_docx(source: SourceType) -> Document:
+    if isinstance(source, bytes):
+        return Document(io.BytesIO(source))
+    return Document(source)
+
+
+def pdf_page_count(source: SourceType) -> int:
+    with _open_pdf(source) as document:
         return document.page_count
 
 
@@ -49,14 +65,14 @@ def _check_text_limits(
 
 
 def extract_pdf(
-    path: Path,
+    source: SourceType,
     max_characters: int | None = None,
     max_bytes: int | None = None,
 ) -> ExtractedDocument:
     source_blocks: list[SourceBlock] = []
     character_count = 0
     utf8_byte_count = 0
-    with fitz.open(path) as document:
+    with _open_pdf(source) as document:
         page_count = document.page_count
         for page_number, page in enumerate(document, start=1):
             extracted = page.get_text("blocks", sort=True)
@@ -92,11 +108,11 @@ def _table_text(table: Table) -> str:
 
 
 def extract_docx(
-    path: Path,
+    source: SourceType,
     max_characters: int | None = None,
     max_bytes: int | None = None,
 ) -> ExtractedDocument:
-    document = Document(path)
+    document = _open_docx(source)
     source_blocks: list[SourceBlock] = []
     character_count = 0
     utf8_byte_count = 0
@@ -124,13 +140,14 @@ def extract_docx(
 
 
 def extract_document(
-    path: Path,
+    source: SourceType,
     extension: str,
     max_characters: int | None = None,
     max_bytes: int | None = None,
 ) -> ExtractedDocument:
     if extension == ".pdf":
-        return extract_pdf(path, max_characters=max_characters, max_bytes=max_bytes)
+        return extract_pdf(source, max_characters=max_characters, max_bytes=max_bytes)
     if extension == ".docx":
-        return extract_docx(path, max_characters=max_characters, max_bytes=max_bytes)
+        return extract_docx(source, max_characters=max_characters, max_bytes=max_bytes)
     raise ValueError("Only PDF and DOCX files are supported.")
+

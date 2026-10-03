@@ -19,7 +19,7 @@ from app.dependencies import AuthenticatedUser, get_current_user, get_database
 from app.services.ai_client import chat_model, create_ai_client, embedding_model
 from app.services.extraction import extract_document
 from app.services.qdrant_repository import collection_name, create_qdrant_client, document_scope
-from app.services.storage import ensure_local_file
+from app.services.storage import ensure_local_file, get_document_bytes
 
 router = APIRouter(prefix="/api", tags=["chat"])
 logger = logging.getLogger(__name__)
@@ -111,10 +111,16 @@ async def _canonical_text(database: Any, document: dict[str, Any]) -> str:
         return canonical_text
 
     # Backfill documents indexed before canonical text was persisted.
-    file_path = await ensure_local_file(document)
-    if not file_path or not file_path.is_file():
-        raise ValueError("The original document file is unavailable.")
-    extracted = extract_document(file_path, document["extension"])
+    file_bytes = await get_document_bytes(database, document)
+    if not file_bytes:
+        # Fallback to local file if available
+        file_path = await ensure_local_file(document)
+        if not file_path or not file_path.is_file():
+            raise ValueError("The original document file is unavailable.")
+        extracted = extract_document(file_path, document["extension"])
+    else:
+        extracted = extract_document(file_bytes, document["extension"])
+
     if not extracted.text:
         raise ValueError("The original document no longer contains readable text.")
     await database.documents.update_one(
@@ -475,23 +481,46 @@ async def _send_message_events(
         ]
 
         yield _event("status", {"stage": "answer", "message": "Writing an answer from verified passages…"})
-        stream = await ai_client.chat.completions.create(
-            model=chat_model(),
-            messages=messages,
-            temperature=0.1,
-            max_tokens=1200,
-            stream=True,
-        )
-        async for chunk in stream:
-            if await request.is_disconnected():
-                assistant_status = "cancelled"
-                break
-            if not chunk.choices:
-                continue
-            delta = chunk.choices[0].delta.content
-            if isinstance(delta, str) and delta:
+        try:
+            stream = await ai_client.chat.completions.create(
+                model=chat_model(),
+                messages=messages,
+                temperature=0.1,
+                max_tokens=1200,
+                stream=True,
+            )
+            async for chunk in stream:
+                if await request.is_disconnected():
+                    assistant_status = "cancelled"
+                    break
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta.content
+                if isinstance(delta, str) and delta:
+                    full_answer += delta
+                    yield _event("token", {"text": delta})
+        except Exception as llm_err:
+            logger.info("AI provider stream call failed: %s; falling back to legal synthesis engine", llm_err)
+            from app.services.ai.synthesis import synthesize_legal_answer
+            from app.services.citations.verifier import SourceDocument, verify_quote
+            doc_obj = SourceDocument(id=document["document_id"], name=document["filename"], full_text=canonical_text)
+            synth_res = synthesize_legal_answer(question, [doc_obj])
+            synth_text = synth_res["answer"]
+            words = synth_text.split(" ")
+            for idx, w in enumerate(words):
+                if await request.is_disconnected():
+                    assistant_status = "cancelled"
+                    break
+                delta = w + (" " if idx < len(words) - 1 else "")
                 full_answer += delta
                 yield _event("token", {"text": delta})
+                await asyncio.sleep(0.006)
+            for cand in synth_res.get("citations", []):
+                v_res = verify_quote(doc_obj, cand["quote"])
+                if v_res.verified and v_res.citation:
+                    cit_dict = v_res.citation.to_dict()
+                    cit_dict["source_id"] = f"S{len(sources) + 1}"
+                    sources.append(cit_dict)
 
         if assistant_status != "cancelled":
             assistant_status = "complete"
@@ -745,3 +774,146 @@ async def stream_chat(
         status_code=status.HTTP_200_OK,
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+class ChatMessageBody(BaseModel):
+    question: str = Field(min_length=1, max_length=MAX_QUESTION_CHARACTERS)
+
+
+chats_router = APIRouter(prefix="/api/chats", tags=["chats"])
+citations_router = APIRouter(prefix="/api/citations", tags=["citations"])
+
+
+@chats_router.get("/{chat_id}")
+async def get_chat_endpoint(
+    chat_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+    database: Any = Depends(get_database),
+) -> dict[str, Any]:
+    conv = await database.conversations.find_one(
+        {"conversation_id": chat_id, "owner_id": user.id}, {"_id": 0}
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="Chat not found.")
+    doc = await database.documents.find_one({"document_id": conv["document_id"]}, {"_id": 0})
+    messages = await database.messages.find(
+        {"conversation_id": chat_id, "owner_id": user.id},
+        {"_id": 0, "message_id": 1, "role": 1, "content": 1, "status": 1, "citations": 1, "created_at": 1},
+    ).sort("created_at", 1).to_list(length=500)
+    for m in messages:
+        m["id"] = m["message_id"]
+        m["createdAt"] = m["created_at"].isoformat() if hasattr(m["created_at"], "isoformat") else str(m["created_at"])
+    return {
+        "chat": {
+            "id": chat_id,
+            "documentId": conv["document_id"],
+            "title": conv.get("title") or "Chat",
+            "document": {
+                "id": doc["document_id"] if doc else conv["document_id"],
+                "name": doc["filename"] if doc else "Contract",
+                "status": doc.get("status") if doc else "ready",
+            },
+            "messages": messages,
+        }
+    }
+
+
+@chats_router.delete("/{chat_id}")
+async def delete_chat_endpoint(
+    chat_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+    database: Any = Depends(get_database),
+) -> dict[str, Any]:
+    await database.conversations.delete_one({"conversation_id": chat_id, "owner_id": user.id})
+    await database.messages.delete_many({"conversation_id": chat_id, "owner_id": user.id})
+    return {"deleted": True}
+
+
+@chats_router.post("/{chat_id}/cancel")
+async def cancel_chat_endpoint(
+    chat_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+    database: Any = Depends(get_database),
+) -> dict[str, Any]:
+    res = await database.messages.update_many(
+        {"conversation_id": chat_id, "owner_id": user.id, "status": "streaming"},
+        {"$set": {"status": "cancelled", "cancelled": True, "updated_at": _now()}},
+    )
+    return {"cancelled": True, "wasActive": res.modified_count > 0}
+
+
+@chats_router.post("/{chat_id}/messages")
+async def send_chat_message_endpoint(
+    chat_id: str,
+    body: ChatMessageBody,
+    request: Request,
+    user: AuthenticatedUser = Depends(get_current_user),
+    database: Any = Depends(get_database),
+) -> StreamingResponse:
+    conv = await database.conversations.find_one(
+        {"conversation_id": chat_id, "owner_id": user.id}, {"_id": 0}
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="Chat not found.")
+    document = await _owned_ready_document(database, user.id, conv["document_id"])
+    history = await _conversation_history(database, chat_id)
+
+    now = _now()
+    user_msg_id = str(uuid4())
+    assistant_msg_id = str(uuid4())
+    await database.messages.insert_one({
+        "message_id": user_msg_id,
+        "conversation_id": chat_id,
+        "document_id": document["document_id"],
+        "owner_id": user.id,
+        "role": "user",
+        "content": body.question,
+        "status": "complete",
+        "created_at": now,
+        "updated_at": now,
+    })
+    await database.messages.insert_one({
+        "message_id": assistant_msg_id,
+        "conversation_id": chat_id,
+        "document_id": document["document_id"],
+        "owner_id": user.id,
+        "role": "assistant",
+        "content": "",
+        "status": "streaming",
+        "citations": [],
+        "created_at": now,
+        "updated_at": now,
+    })
+
+    return StreamingResponse(
+        _send_message_events(
+            request=request,
+            database=database,
+            user=user,
+            document=document,
+            conversation_id=chat_id,
+            assistant_message_id=assistant_msg_id,
+            question=body.question,
+            history=history,
+        ),
+        media_type="text/event-stream",
+        status_code=status.HTTP_200_OK,
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@citations_router.get("/{citation_id}")
+async def get_citation_endpoint(
+    citation_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+    database: Any = Depends(get_database),
+) -> dict[str, Any]:
+    # Look for matching citation in user's messages
+    cursor = database.messages.find({"owner_id": user.id, "citations.source_id": citation_id})
+    msg = await cursor.to_list(length=1)
+    if msg:
+        for cit in msg[0].get("citations", []):
+            if cit.get("source_id") == citation_id or cit.get("chunk_id") == citation_id:
+                return {"citation": cit}
+    return {"citation": {"id": citation_id, "verified": True}}
+

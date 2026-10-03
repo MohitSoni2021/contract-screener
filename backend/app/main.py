@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -6,7 +7,8 @@ from pymongo import AsyncMongoClient
 from pymongo.errors import OperationFailure
 
 from app.config import cors_origins, database_name, required_setting
-from app.routers import auth, chat, documents, research
+from app.routers import auth, chat, compare, documents, redline, research
+from app.worker import run_worker_loop
 
 
 @asynccontextmanager
@@ -17,6 +19,7 @@ async def lifespan(app: FastAPI):
     )
     app.state.mongo_client = mongo_client
     app.state.database = mongo_client[database_name()]
+    worker_task: asyncio.Task | None = None
     try:
         await mongo_client.admin.command("ping")
         await app.state.database.users.create_index("email", unique=True)
@@ -49,8 +52,15 @@ async def lifespan(app: FastAPI):
             [("conversation_id", 1), ("owner_id", 1), ("created_at", 1)],
             name="messages_by_conversation",
         )
+        worker_task = asyncio.create_task(run_worker_loop(app.state.database))
         yield
     finally:
+        if worker_task is not None:
+            worker_task.cancel()
+            try:
+                await worker_task
+            except asyncio.CancelledError:
+                pass
         await mongo_client.close()
 
 
@@ -66,7 +76,12 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(documents.router)
 app.include_router(chat.router)
+app.include_router(chat.chats_router)
+app.include_router(chat.citations_router)
 app.include_router(research.router)
+app.include_router(research.agent_router)
+app.include_router(compare.router)
+app.include_router(redline.router)
 
 
 @app.get("/api/health")

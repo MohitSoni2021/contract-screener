@@ -387,3 +387,27 @@ def test_chat_stream_timeout_emits_retryable_error_and_persists_failure(monkeypa
     assert "timed out" in error["message"]
     assert not any(name == "done" for name, _ in decoded)
     assert database.messages.updates[-1][1]["$set"]["status"] == "failed"
+
+
+def test_extraction_from_bytes_pdf_and_docx(tmp_path: Path):
+    import io
+    # PDF from bytes
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "Payment is due in 30 days from invoice.")
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    extracted_pdf = extract_document(pdf_bytes, ".pdf")
+    assert "Payment is due in 30 days" in extracted_pdf.text
+    assert extracted_pdf.page_count == 1
+
+    # DOCX from bytes
+    docx_doc = Document()
+    docx_doc.add_paragraph("Confidential terms and conditions.")
+    bio = io.BytesIO()
+    docx_doc.save(bio)
+    docx_bytes = bio.getvalue()
+
+    extracted_docx = extract_document(docx_bytes, ".docx")
+    assert "Confidential terms and conditions." in extracted_docx.text

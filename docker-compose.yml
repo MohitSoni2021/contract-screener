@@ -1,4 +1,16 @@
 services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - qdrant
+
   qdrant:
     image: qdrant/qdrant:v1.19.1
     restart: unless-stopped

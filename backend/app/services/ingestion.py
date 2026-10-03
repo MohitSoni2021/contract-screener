@@ -17,6 +17,7 @@ from app.services.qdrant_repository import (
     ensure_collection,
     make_point,
 )
+from app.services.storage import get_document_bytes
 from app.services.structure import extract_structure
 
 EMBEDDING_BATCH_SIZE = 64
@@ -57,11 +58,16 @@ async def _set_status(
 async def ingest_document(
     database: Any,
     document: dict[str, Any],
-    file_path: Path,
+    file_source: Path | str | bytes | None = None,
     *,
     worker_id: str | None = None,
 ) -> None:
     document_id = document["document_id"]
+    if file_source is None:
+        file_source = await get_document_bytes(database, document)
+        if file_source is None:
+            raise ValueError("The document file is missing or unavailable.")
+
     qdrant = create_qdrant_client()
     embedding_client: AsyncOpenAI | None = None
     try:
@@ -69,13 +75,13 @@ async def ingest_document(
         embedding_client = create_ai_client()
         await _set_status(database, document_id, worker_id=worker_id, status="extracting", stage="Extracting text", progress=8)
         if document["extension"] == ".pdf":
-            page_count = await asyncio.to_thread(pdf_page_count, file_path)
+            page_count = await asyncio.to_thread(pdf_page_count, file_source)
             page_limit = max_pdf_pages()
             if page_count > page_limit:
                 raise ValueError(f"This PDF has {page_count} pages. The limit is {page_limit} pages.")
         extracted = await asyncio.to_thread(
             extract_document,
-            file_path,
+            file_source,
             document["extension"],
             max_characters=max_extracted_characters(),
             max_bytes=max_extracted_text_bytes(),
