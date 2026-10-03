@@ -36,9 +36,9 @@ function CompareDocPage({ user, token, onLogout }: CompareDocPageProps) {
           userName={user.name}
           onLogout={onLogout}
         />
-        <section className="comparison-main-panel flex h-full w-full flex-1 flex-col">
+        <section className="flex h-full w-full flex-1 flex-col min-h-0 min-w-0 overflow-hidden bg-[#f6f8f6]">
           {loading ? (
-            <div className="document-restore" role="status"><span className="spinner" /> Loading your documents…</div>
+            <div className="document-restore m-auto" role="status"><span className="spinner" /> Loading your documents…</div>
           ) : (
             <DocumentComparison documents={documents} token={token} />
           )}
