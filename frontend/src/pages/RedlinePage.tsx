@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, useParams } from "react-router-dom";
-import { FilePenLine, Check, Sparkles } from "lucide-react";
+import {
+  FilePenLine,
+  Check,
+  Sparkles,
+  Download,
+  Plus,
+  X,
+  Trash2,
+  Loader2,
+  ChevronDown,
+} from "lucide-react";
 import WorkspaceSidebar from "../components/WorkspaceSidebar";
 import type { ProposedRedline, RedlineStagedEdit, UploadedDocument, User } from "../types";
 import type { AppDispatch, RootState } from "../store/store";
@@ -216,423 +226,429 @@ function RedlinePage({ user, token, onLogout }: RedlinePageProps) {
           onLogout={onLogout}
         />
 
-        <section className="comparison-main-panel workspace-main-panel flex-1 overflow-y-auto px-6 py-8 md:px-10">
-          <div className="mx-auto max-w-5xl">
-            {/* Header */}
-            <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-[#e2e8e3] pb-6">
-              <div>
-                <div className="eyebrow text-xs font-bold uppercase tracking-wider text-[#456b54]">
-                  CONTRACT INTELLIGENCE · REDLINE & EXPORT
+        <section className="flex h-full w-full flex-1 flex-col min-h-0 min-w-0 overflow-hidden bg-[#f7f9f7]">
+          {/* Top Bar: Active Document & Status on top of the screen */}
+          <div className="shrink-0 border-b border-[#dfe8e1] bg-white px-5 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#688172]">
+                Active Document:
+              </span>
+              {readyDocuments.length === 0 ? (
+                <span className="text-xs text-[#8c9c91]">
+                  No ready documents available. Upload a document in your workspace first.
+                </span>
+              ) : (
+                <div className="relative">
+                  <select
+                    className="appearance-none rounded-lg border border-[#c9d9ce] bg-[#f8faf8] pl-3 pr-8 py-1.5 text-xs font-semibold text-[#203c2c] focus:border-[#2f5e43] focus:bg-white focus:outline-none transition cursor-pointer"
+                    value={selectedDocId}
+                    onChange={(e) => {
+                      setSelectedDocId(e.target.value);
+                      setCurrentProposal(null);
+                    }}
+                  >
+                    {readyDocuments.map((doc) => (
+                      <option key={doc.document_id} value={doc.document_id}>
+                        {doc.filename} ({doc.filename.toLowerCase().endsWith(".docx") ? "DOCX" : "PDF"})
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#738e7d]" />
                 </div>
-                <h1 className="mt-1 font-serif text-2xl font-bold tracking-tight text-[#1e2e26] md:text-3xl">
-                  Contract Redlining & Tracked Changes
-                </h1>
-                <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-[#5a6d62]">
-                  Propose surgical contract edits using AI and export native Microsoft Word (
-                  <code className="rounded bg-[#eaf1ec] px-1 py-0.5 text-xs font-semibold text-[#2f553f]">
-                    .docx
-                  </code>
-                  ) documents with tracked changes (
-                  <span className="font-mono text-xs text-[#b83232]">&lt;w:del&gt;</span> and{" "}
-                  <span className="font-mono text-xs text-[#2a7a4b]">&lt;w:ins&gt;</span>).
-                </p>
-              </div>
+              )}
 
-              <div className="flex items-center gap-2 rounded-lg border border-[#cbe0d2] bg-[#f2f7f3] px-3.5 py-2 shadow-sm">
-                <FilePenLine className="h-4 w-4 text-[#2f553f]" />
-                <div className="text-xs">
-                  <div className="font-bold text-[#1f3f2d]">Word Tracked Changes</div>
-                  <div className="text-[#597564]">Native XML formatting</div>
+              {selectedDocument && (
+                <div className="flex items-center gap-2 text-xs text-[#5e7367]">
+                  <span className="rounded bg-[#e8f1eb] px-2 py-0.5 font-bold text-[11px] text-[#245338]">
+                    {selectedDocument.filename.toLowerCase().endsWith(".docx") ? "DOCX Document" : "PDF Document"}
+                  </span>
+                  <span>•</span>
+                  <span className="text-[11px] font-medium text-[#657a6e]">
+                    {selectedDocument.indexed_chunks} indexed passages
+                  </span>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Document Selector */}
-            <div className="mb-6 rounded-xl border border-[#dfe8e1] bg-white p-4 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-[#354c3e]">Active Document:</span>
-                  {readyDocuments.length === 0 ? (
-                    <span className="text-xs text-[#8c9c91]">No ready documents available. Upload a document in your workspace first.</span>
+            <div className="flex items-center gap-2.5">
+              <div className="hidden sm:flex items-center gap-1.5 rounded-md border border-[#cbe0d2] bg-[#f2f7f3] px-2.5 py-1 text-xs font-semibold text-[#275b3e]">
+                <FilePenLine className="h-3.5 w-3.5" />
+                <span>Word Tracked Changes (.docx)</span>
+              </div>
+
+              {stagedEdits.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void handleDownloadDocx()}
+                  disabled={applying || stagedEdits.filter((e) => e.applied).length === 0}
+                  className="flex items-center gap-1.5 rounded-lg bg-[#25523a] px-3 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-[#1a3d2a] disabled:opacity-50"
+                  title="Export all staged edits"
+                >
+                  {applying ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <select
-                      className="rounded-lg border border-[#c9d9ce] bg-[#f8faf8] px-3 py-1.5 text-sm font-medium text-[#233c2e] focus:border-[#427b58] focus:outline-none"
-                      value={selectedDocId}
-                      onChange={(e) => {
-                        setSelectedDocId(e.target.value);
-                        setCurrentProposal(null);
-                      }}
-                    >
-                      {readyDocuments.map((doc) => (
-                        <option key={doc.document_id} value={doc.document_id}>
-                          {doc.filename} ({doc.filename.toLowerCase().endsWith(".docx") ? "DOCX" : "PDF"})
-                        </option>
-                      ))}
-                    </select>
+                    <Download className="h-3.5 w-3.5" />
+                  )}
+                  <span>Export ({stagedEdits.filter((e) => e.applied).length}) .docx</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Slim Notifications Banner if error or success */}
+          {error && (
+            <div
+              className="shrink-0 flex items-center justify-between border-b border-[#fecaca] bg-[#fff5f5] px-5 py-2 text-xs text-[#991b1b]"
+              role="alert"
+            >
+              <span><strong>Error:</strong> {error}</span>
+              <button
+                onClick={() => setError("")}
+                className="font-bold underline hover:text-[#7f1d1d]"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {successMessage && (
+            <div
+              className="shrink-0 flex items-center justify-between border-b border-[#bbf7d0] bg-[#f0fdf4] px-5 py-2 text-xs text-[#166534]"
+              role="status"
+            >
+              <span className="flex items-center gap-1.5">
+                <Check className="h-3.5 w-3.5" />
+                <span>{successMessage}</span>
+              </span>
+              <button
+                onClick={() => setSuccessMessage("")}
+                className="font-bold underline hover:text-[#14532d]"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {/* Edge-to-Edge Split Workbench */}
+          <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
+            {/* Left Panel: Redline Composer & Staged Edits Queue */}
+            <div className="w-full lg:w-[460px] xl:w-[500px] shrink-0 border-r border-[#dfe8e1] bg-white flex flex-col min-h-0 overflow-y-auto">
+              {/* Section 1: Composer & Presets */}
+              <div className="p-5">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-bold text-[#1f372a]">1. Redline Instruction</h2>
+                  <span className="text-[10px] font-semibold text-[#70897a] uppercase tracking-wider">AI Drafting</span>
+                </div>
+                <p className="mt-1 text-xs text-[#5e7367]">
+                  Describe the legal change to propose. The AI targets the exact clause and crafts surgical Word-tracked replacements.
+                </p>
+
+                {/* Preset Pills */}
+                <div className="mt-3.5">
+                  <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#798e81]">
+                    Quick Preset Instructions
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PRESET_INSTRUCTIONS.map((preset, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => {
+                          setInstruction(preset.text);
+                          void handleProposeRedline(preset.text);
+                        }}
+                        className="rounded-full border border-[#d2e2d6] bg-[#f6faf7] px-2.5 py-1 text-xs font-medium text-[#2d5c41] transition hover:border-[#387b53] hover:bg-[#ebf4ee] hover:text-[#18482d]"
+                        disabled={proposing || !selectedDocId}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom Drafting Prompt Textarea */}
+                <div className="mt-4">
+                  <label htmlFor="redline-prompt" className="mb-1 block text-xs font-semibold text-[#385142]">
+                    Custom Drafting Prompt
+                  </label>
+                  <textarea
+                    id="redline-prompt"
+                    className="w-full resize-none rounded-xl border border-[#cbdad0] bg-[#fcfdfc] p-3 text-xs text-[#203629] placeholder-[#90a297] focus:border-[#2f5e43] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#2f5e43]/20"
+                    rows={3}
+                    value={instruction}
+                    onChange={(e) => setInstruction(e.target.value)}
+                    placeholder="e.g., Change governing law to New York and require mutual attorney fee recovery..."
+                    disabled={proposing || !selectedDocId}
+                  />
+                  <div className="mt-1 flex items-center justify-between text-[10px] text-[#788b7f]">
+                    <span>Max 500 characters</span>
+                    <span>{instruction.length}/500</span>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => handleProposeRedline()}
+                    disabled={proposing || !selectedDocId || !instruction.trim()}
+                    className="flex items-center gap-1.5 rounded-lg bg-[#25523a] px-4 py-2 text-xs font-semibold text-white shadow-2xs transition hover:bg-[#1a3d2a] disabled:opacity-50"
+                  >
+                    {proposing ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span>Analyzing & Drafting…</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>Propose Redline</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Section 2: Staged Edits for Batch Export */}
+              <div className="border-t border-[#e5ebe6] p-5 flex-1 flex flex-col">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-[#1f372a]">Staged Edits for Batch Export</h2>
+                    <p className="mt-0.5 text-[11px] text-[#63796d]">
+                      {stagedEdits.length === 0
+                        ? "No edits staged yet. Propose edits and click 'Stage Edit' to queue them."
+                        : `${stagedEdits.filter((e) => e.applied).length} of ${stagedEdits.length} edits selected for export.`}
+                    </p>
+                  </div>
+                  {stagedEdits.length > 0 && (
+                    <span className="rounded-full bg-[#e3efe6] px-2.5 py-0.5 text-xs font-bold text-[#235338]">
+                      {stagedEdits.length} Staged
+                    </span>
                   )}
                 </div>
 
-                {selectedDocument && (
-                  <div className="flex items-center gap-2 text-xs text-[#5e7367]">
-                    <span className="rounded bg-[#e8f1eb] px-2 py-0.5 font-semibold text-[#2a5a3e]">
-                      {selectedDocument.filename.toLowerCase().endsWith(".docx") ? "Original DOCX" : "PDF Document"}
-                    </span>
-                    <span>•</span>
-                    <span>{selectedDocument.indexed_chunks} indexed passages</span>
+                {stagedEdits.length > 0 && (
+                  <div className="mt-3.5 space-y-2.5 flex-1">
+                    {stagedEdits.map((edit) => (
+                      <div
+                        key={edit.id}
+                        className={`rounded-lg border p-3 text-xs transition ${
+                          edit.applied
+                            ? "border-[#c4decb] bg-[#f8fbf9]"
+                            : "border-[#e0e6e2] bg-[#fbfbfb] opacity-60"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <label className="flex items-center gap-2 font-semibold text-[#1e3b2b] cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={edit.applied}
+                              onChange={() => handleToggleStagedEdit(edit.id)}
+                              className="h-3.5 w-3.5 rounded border-[#9fb9a6] text-[#25523a] focus:ring-[#25523a]"
+                            />
+                            <span>{edit.clauseTitle}</span>
+                          </label>
+                          <button
+                            onClick={() => handleRemoveStagedEdit(edit.id)}
+                            className="text-[#964038] hover:text-[#b82618] p-0.5"
+                            title="Remove edit"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+
+                        <div className="mt-2 space-y-1 pl-5 font-mono text-[11px]">
+                          <div className="rounded bg-[#fee2e2] px-2 py-0.5 text-[#991b1b] line-through">
+                            - {edit.targetText}
+                          </div>
+                          <div className="rounded bg-[#dcfce7] px-2 py-0.5 text-[#166534]">
+                            + {edit.revisedText}
+                          </div>
+                        </div>
+
+                        <p className="mt-1.5 pl-5 text-[10px] italic text-[#607567]">
+                          {edit.explanation}
+                        </p>
+                      </div>
+                    ))}
+
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#eaf0eb] pt-3">
+                      <button
+                        type="button"
+                        onClick={() => setStagedEdits([])}
+                        className="inline-flex items-center gap-1 text-[11px] text-[#80261f] hover:underline"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        <span>Clear all staged</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadDocx()}
+                        disabled={applying || stagedEdits.filter((e) => e.applied).length === 0}
+                        className="flex items-center gap-1.5 rounded-lg bg-[#25523a] px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-[#1a3d2a] disabled:opacity-50"
+                      >
+                        {applying ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span>Exporting…</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="h-3.5 w-3.5" />
+                            <span>Export ({stagedEdits.filter((e) => e.applied).length}) .docx</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Notifications */}
-            {error && (
-              <div
-                className="mb-6 flex items-start gap-3 rounded-lg border border-[#f5c6cb] bg-[#fdf2f2] p-4 text-sm text-[#721c24] shadow-sm"
-                role="alert"
-              >
-                <span className="font-bold">Error:</span>
-                <span className="flex-1">{error}</span>
-                <button
-                  onClick={() => setError("")}
-                  className="text-xs font-bold text-[#721c24] hover:underline"
-                >
-                  Dismiss
-                </button>
-              </div>
-            )}
-
-            {successMessage && (
-              <div
-                className="mb-6 flex items-start gap-3 rounded-lg border border-[#c3e6cb] bg-[#f2f9f4] p-4 text-sm text-[#155724] shadow-sm"
-                role="status"
-              >
-                <Check className="h-4 w-4 text-[#155724] shrink-0 mt-0.5" />
-                <span className="flex-1">{successMessage}</span>
-                <button
-                  onClick={() => setSuccessMessage("")}
-                  className="text-xs font-bold text-[#155724] hover:underline"
-                >
-                  Dismiss
-                </button>
-              </div>
-            )}
-
-            {/* Main Redline Workbench Grid */}
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-              {/* Left Column: Prompting & Instructions */}
-              <div className="lg:col-span-6 flex flex-col gap-5">
-                <div className="rounded-xl border border-[#dfe8e1] bg-white p-5 shadow-sm">
-                  <h2 className="text-base font-bold text-[#23382c]">1. Redline Instruction</h2>
-                  <p className="mt-1 text-xs text-[#5c6e63]">
-                    Describe the modification you want to propose. The AI will locate the exact target clause and formulate the revised legal text.
+            {/* Right Panel: Proposed Redline Inspection & Diff Viewer */}
+            <div className="flex-1 min-h-0 overflow-y-auto bg-[#f8faf8] flex flex-col">
+              {!currentProposal && !proposing && (
+                <div className="m-auto flex max-w-md flex-col items-center justify-center p-8 text-center text-[#73887c]">
+                  <div className="mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-[#e5eee8] text-[#25523a]">
+                    <FilePenLine className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-sm font-bold text-[#1f372a]">No active redline proposed yet</h3>
+                  <p className="mt-1.5 text-xs leading-relaxed text-[#687f71]">
+                    Select a document, pick a quick instruction pill or type your custom instruction on the left, then click &quot;Propose Redline&quot;.
                   </p>
-
-                  {/* Preset Pills */}
-                  <div className="mt-3">
-                    <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#798e81]">
-                      Quick Preset Instructions
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {PRESET_INSTRUCTIONS.map((preset, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => {
-                            setInstruction(preset.text);
-                            void handleProposeRedline(preset.text);
-                          }}
-                          className="rounded-full border border-[#d2e2d6] bg-[#f6faf7] px-2.5 py-1 text-xs text-[#2d5c41] transition hover:border-[#387b53] hover:bg-[#ebf4ee] hover:text-[#18482d]"
-                          disabled={proposing || !selectedDocId}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Custom Prompt Textarea */}
-                  <div className="mt-4">
-                    <label htmlFor="redline-prompt" className="mb-1 block text-xs font-semibold text-[#405649]">
-                      Custom Drafting Prompt
-                    </label>
-                    <textarea
-                      id="redline-prompt"
-                      className="w-full rounded-lg border border-[#cbdad0] p-3 text-sm text-[#203629] placeholder-[#90a297] focus:border-[#387b53] focus:bg-[#fcfdfc] focus:outline-none"
-                      rows={3}
-                      value={instruction}
-                      onChange={(e) => setInstruction(e.target.value)}
-                      placeholder="e.g., Change governing law to New York and require mutual attorney fee recovery..."
-                      disabled={proposing || !selectedDocId}
-                    />
-                    <div className="mt-1 flex items-center justify-between text-[11px] text-[#788b7f]">
-                      <span>Max 500 characters</span>
-                      <span>{instruction.length}/500</span>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 flex items-center justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={() => handleProposeRedline()}
-                      disabled={proposing || !selectedDocId || !instruction.trim()}
-                      className="flex items-center gap-2 rounded-lg bg-[#2f5e43] px-5 py-2.5 text-sm font-semibold text-white shadow transition hover:bg-[#254d36] disabled:opacity-50"
-                    >
-                      {proposing ? (
-                        <>
-                          <span className="spinner inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          <span>Analyzing & Drafting…</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-3.5 w-3.5" />
-                          <span>Propose Redline</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
                 </div>
+              )}
 
-                {/* Staged Edits Overview Card */}
-                <div className="rounded-xl border border-[#dfe8e1] bg-white p-5 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-base font-bold text-[#23382c]">Staged Edits for Batch Export</h2>
-                      <p className="text-xs text-[#667a6e]">
-                        {stagedEdits.length === 0
-                          ? "No edits staged yet. Propose edits and click 'Stage Edit' to queue them."
-                          : `${stagedEdits.filter((e) => e.applied).length} of ${stagedEdits.length} edits selected for DOCX export.`}
-                      </p>
-                    </div>
-                    {stagedEdits.length > 0 && (
-                      <span className="rounded-full bg-[#e3efe6] px-2.5 py-0.5 text-xs font-bold text-[#275a3c]">
-                        {stagedEdits.length} Staged
-                      </span>
-                    )}
-                  </div>
-
-                  {stagedEdits.length > 0 ? (
-                    <div className="mt-4 space-y-3">
-                      {stagedEdits.map((edit) => (
-                        <div
-                          key={edit.id}
-                          className={`rounded-lg border p-3.5 text-xs transition ${
-                            edit.applied
-                              ? "border-[#c4decb] bg-[#f7fbf8]"
-                              : "border-[#e0e6e2] bg-[#fbfbfb] opacity-60"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <label className="flex items-center gap-2 font-bold text-[#203c2c] cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={edit.applied}
-                                onChange={() => handleToggleStagedEdit(edit.id)}
-                                className="h-4 w-4 rounded border-[#9fb9a6] text-[#2f5e43] focus:ring-[#387b53]"
-                              />
-                              <span>{edit.clauseTitle}</span>
-                            </label>
-                            <button
-                              onClick={() => handleRemoveStagedEdit(edit.id)}
-                              className="text-[#964038] hover:text-[#b82618]"
-                              title="Remove edit"
-                            >
-                              ✕
-                            </button>
-                          </div>
-
-                          <div className="mt-2 space-y-1.5 pl-6 font-mono text-[11px]">
-                            <div className="rounded bg-[#fee2e2] px-2 py-1 text-[#991b1b] line-through">
-                              - {edit.targetText}
-                            </div>
-                            <div className="rounded bg-[#dcfce7] px-2 py-1 text-[#166534]">
-                              + {edit.revisedText}
-                            </div>
-                          </div>
-
-                          <p className="mt-2 pl-6 text-[11px] italic text-[#5f7467]">
-                            {edit.explanation}
-                          </p>
-                        </div>
-                      ))}
-
-                      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#e5ece6] pt-4">
-                        <button
-                          type="button"
-                          onClick={() => setStagedEdits([])}
-                          className="text-xs text-[#80261f] hover:underline"
-                        >
-                          Clear all staged edits
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDownloadDocx()}
-                          disabled={applying || stagedEdits.filter((e) => e.applied).length === 0}
-                          className="flex items-center gap-2 rounded-lg bg-[#185333] px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-[#124227] disabled:opacity-50"
-                        >
-                          {applying ? (
-                            <>
-                              <span className="spinner inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                              <span>Generating Tracked Changes DOCX…</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>📥</span>
-                              <span>Export All ({stagedEdits.filter((e) => e.applied).length}) as Tracked Changes DOCX</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
+              {proposing && (
+                <div className="m-auto flex flex-col items-center justify-center p-8 text-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-[#25523a]" />
+                  <p className="mt-3 text-sm font-semibold text-[#213e2d]">
+                    Locating clause & synthesizing legal revision…
+                  </p>
+                  <p className="mt-1 text-xs text-[#6e8276]">
+                    Preserving surrounding contract context and formatting tracked changes
+                  </p>
                 </div>
-              </div>
+              )}
 
-              {/* Right Column: Proposed Redline Review & Diff Inspection */}
-              <div className="lg:col-span-6 flex flex-col gap-5">
-                <div className="rounded-xl border border-[#dfe8e1] bg-white p-5 shadow-sm">
-                  <div className="flex items-center justify-between border-b border-[#e9efe9] pb-3">
-                    <h2 className="text-base font-bold text-[#23382c]">2. Proposed Redline Inspection</h2>
-                    {currentProposal && (
-                      <span className="rounded bg-[#edf5ef] px-2.5 py-1 text-xs font-semibold text-[#285b3e]">
+              {currentProposal && !proposing && (
+                <div className="p-6 max-w-4xl space-y-4">
+                  {/* Proposal Header Bar */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#dfe8e1] pb-3">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-sm font-bold text-[#1f372a]">2. Proposed Redline Inspection</h2>
+                      <span className="rounded bg-[#e8f2eb] px-2.5 py-0.5 text-xs font-semibold text-[#245338]">
                         {currentProposal.clauseTitle || "Target Clause"}
                       </span>
-                    )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const revised = isEditingProposal ? customRevisedText : currentProposal.revisedText;
+                          void handleDownloadDocx([
+                            { targetText: currentProposal.targetText, revisedText: revised },
+                          ]);
+                        }}
+                        disabled={applying}
+                        className="flex items-center gap-1.5 rounded-lg border border-[#25523a] bg-white px-3 py-1.5 text-xs font-semibold text-[#25523a] transition hover:bg-[#edf5ef] disabled:opacity-50"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        <span>Download Revision (.docx)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleStageCurrentEdit}
+                        className="flex items-center gap-1.5 rounded-lg bg-[#25523a] px-3.5 py-1.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-[#1a3d2a]"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Stage this Edit</span>
+                      </button>
+                    </div>
                   </div>
 
-                  {!currentProposal && !proposing && (
-                    <div className="py-12 text-center text-[#73887c]">
-                      <FilePenLine className="h-8 w-8 mx-auto text-[#73887c]" />
-                      <p className="mt-2 text-sm font-medium">No active redline proposed yet.</p>
-                      <p className="mt-1 text-xs text-[#889b90]">
-                        Select a document, pick a quick instruction or type your prompt, and click &quot;Propose Redline&quot;.
-                      </p>
+                  {/* Legal Rationale Box */}
+                  <div className="rounded-xl border border-[#cfe1d5] bg-white p-4 shadow-2xs">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-[#2e6240]">
+                      Legal Rationale &amp; Analysis
                     </div>
-                  )}
+                    <p className="mt-1.5 text-xs leading-relaxed text-[#233d2e]">
+                      {currentProposal.explanation}
+                    </p>
+                  </div>
 
-                  {proposing && (
-                    <div className="py-14 text-center">
-                      <div className="spinner mx-auto h-7 w-7 animate-spin rounded-full border-3 border-[#2f5e43] border-t-transparent" />
-                      <p className="mt-3 text-sm font-semibold text-[#234231]">
-                        Locating clause & synthesizing legal revision…
-                      </p>
-                      <p className="text-xs text-[#6e8276]">
-                        Preserving sentence context and preparing tracked changes
-                      </p>
-                    </div>
-                  )}
-
-                  {currentProposal && !proposing && (
-                    <div className="mt-4 space-y-4">
-                      {/* Legal Rationale Box */}
-                      <div className="rounded-lg border border-[#cfe1d5] bg-[#f5f9f6] p-3.5">
-                        <div className="text-[11px] font-bold uppercase tracking-wider text-[#316946]">
-                          Legal Rationale & Analysis
-                        </div>
-                        <p className="mt-1 text-xs leading-relaxed text-[#233d2e]">
-                          {currentProposal.explanation}
-                        </p>
+                  {/* Visual Diff: Prior vs Proposed */}
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-[#fecaca] bg-[#fff5f5] p-4 shadow-2xs">
+                      <div className="flex items-center justify-between text-xs font-bold text-[#991b1b]">
+                        <span>Prior Language (To be deleted)</span>
+                        <span className="rounded bg-[#fee2e2] px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider">
+                          &lt;w:del&gt;
+                        </span>
                       </div>
+                      <div className="mt-2 font-mono text-xs leading-relaxed text-[#7f1d1d] line-through">
+                        {currentProposal.targetText}
+                      </div>
+                    </div>
 
-                      {/* Visual Diff: Prior vs Revised */}
-                      <div className="space-y-3">
-                        <div className="rounded-lg border border-[#fecaca] bg-[#fff5f5] p-3.5">
-                          <div className="flex items-center justify-between text-xs font-bold text-[#991b1b]">
-                            <span>Prior Language (To be deleted)</span>
-                            <span className="rounded bg-[#fee2e2] px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider">
-                              &lt;w:del&gt;
-                            </span>
-                          </div>
-                          <div className="mt-2 font-mono text-xs leading-relaxed text-[#7f1d1d] line-through">
-                            {currentProposal.targetText}
-                          </div>
-                        </div>
-
-                        <div className="rounded-lg border border-[#bbf7d0] bg-[#f0fdf4] p-3.5">
-                          <div className="flex items-center justify-between text-xs font-bold text-[#166534]">
-                            <span>Proposed Language (To be inserted)</span>
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setIsEditingProposal((prev) => !prev)}
-                                className="text-[11px] text-[#2563eb] underline hover:text-[#1d4ed8]"
-                              >
-                                {isEditingProposal ? "Cancel Edit" : "Custom Edit"}
-                              </button>
-                              <span className="rounded bg-[#dcfce7] px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider">
-                                &lt;w:ins&gt;
-                              </span>
-                            </div>
-                          </div>
-
-                          {isEditingProposal ? (
-                            <textarea
-                              className="mt-2 w-full rounded border border-[#86efac] bg-white p-2 font-mono text-xs text-[#14532d] focus:border-[#16a34a] focus:outline-none"
-                              rows={3}
-                              value={customRevisedText}
-                              onChange={(e) => setCustomRevisedText(e.target.value)}
-                            />
-                          ) : (
-                            <div className="mt-2 font-mono text-xs font-medium leading-relaxed text-[#14532d]">
-                              {customRevisedText}
-                            </div>
-                          )}
+                    <div className="rounded-xl border border-[#bbf7d0] bg-[#f0fdf4] p-4 shadow-2xs">
+                      <div className="flex items-center justify-between text-xs font-bold text-[#166534]">
+                        <span>Proposed Language (To be inserted)</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingProposal((prev) => !prev)}
+                            className="text-[11px] text-[#2563eb] underline hover:text-[#1d4ed8]"
+                          >
+                            {isEditingProposal ? "Cancel Edit" : "Custom Edit"}
+                          </button>
+                          <span className="rounded bg-[#dcfce7] px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider">
+                            &lt;w:ins&gt;
+                          </span>
                         </div>
                       </div>
 
-                      {/* Context Sentence Preview */}
-                      {currentProposal.contextSentence && (
-                        <div className="rounded-lg border border-[#e2e8e3] bg-[#fbfdfb] p-3">
-                          <div className="text-[10px] font-bold uppercase tracking-wider text-[#697d71]">
-                            Full Clause Context
-                          </div>
-                          <p className="mt-1 text-xs italic leading-relaxed text-[#415347]">
-                            &quot;{currentProposal.contextSentence}&quot;
-                          </p>
+                      {isEditingProposal ? (
+                        <textarea
+                          className="mt-2 w-full rounded-lg border border-[#86efac] bg-white p-2.5 font-mono text-xs text-[#14532d] focus:border-[#16a34a] focus:outline-none"
+                          rows={3}
+                          value={customRevisedText}
+                          onChange={(e) => setCustomRevisedText(e.target.value)}
+                        />
+                      ) : (
+                        <div className="mt-2 font-mono text-xs font-medium leading-relaxed text-[#14532d]">
+                          {customRevisedText}
                         </div>
                       )}
+                    </div>
+                  </div>
 
-                      {/* Action Bar */}
-                      <div className="flex flex-wrap items-center justify-end gap-3 border-t border-[#e8efe9] pt-4">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const revised = isEditingProposal ? customRevisedText : currentProposal.revisedText;
-                            void handleDownloadDocx([
-                              { targetText: currentProposal.targetText, revisedText: revised },
-                            ]);
-                          }}
-                          disabled={applying}
-                          className="flex items-center gap-1.5 rounded-lg border border-[#2f5e43] bg-white px-4 py-2 text-xs font-bold text-[#2f5e43] transition hover:bg-[#edf5ef] disabled:opacity-50"
-                        >
-                          <span>📥</span>
-                          <span>Download this Revision (.docx)</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={handleStageCurrentEdit}
-                          className="flex items-center gap-1.5 rounded-lg bg-[#275a3c] px-4 py-2 text-xs font-bold text-white shadow transition hover:bg-[#1d462e]"
-                        >
-                          <span>+</span>
-                          <span>Stage this Edit</span>
-                        </button>
+                  {/* Context Sentence Preview */}
+                  {currentProposal.contextSentence && (
+                    <div className="rounded-xl border border-[#dfe7e2] bg-white p-3.5 shadow-2xs">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#697d71]">
+                        Full Clause Context
                       </div>
+                      <blockquote className="mt-1 text-xs italic leading-relaxed text-[#415347] border-l-2 border-[#a8c9b3] pl-2.5">
+                        &quot;{currentProposal.contextSentence}&quot;
+                      </blockquote>
                     </div>
                   )}
-                </div>
 
-                {/* Information Card on Native DOCX Tracked Changes */}
-                <div className="rounded-xl border border-[#dfe8e1] bg-[#f8faf8] p-4 text-xs text-[#526659]">
-                  <h3 className="font-bold text-[#243d2f]">About Word Tracked Changes (.docx)</h3>
-                  <p className="mt-1 leading-relaxed">
-                    When you export, the backend packages your revisions directly using OpenXML elements{" "}
-                    <code className="rounded bg-white px-1 py-0.5 text-[11px] font-mono text-[#b33939]">&lt;w:del&gt;</code> and{" "}
-                    <code className="rounded bg-white px-1 py-0.5 text-[11px] font-mono text-[#25733d]">&lt;w:ins&gt;</code>.
-                    Opening the downloaded document in Microsoft Word, Google Docs, or LibreOffice will immediately display standard redline markup with Accept/Reject controls.
-                  </p>
+                  {/* About Word Tracked Changes (.docx) */}
+                  <div className="rounded-xl border border-[#e2e8e3] bg-[#f4f7f5] p-3.5 text-xs text-[#526659]">
+                    <div className="font-bold text-[#203c2c] text-[11px]">About Word Tracked Changes (.docx)</div>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-[#5a7062]">
+                      When you export, the backend packages your revisions directly using OpenXML elements{" "}
+                      <code className="rounded bg-white px-1 py-0.5 text-[10px] font-mono text-[#b33939]">&lt;w:del&gt;</code> and{" "}
+                      <code className="rounded bg-white px-1 py-0.5 text-[10px] font-mono text-[#25733d]">&lt;w:ins&gt;</code>.
+                      Opening the downloaded document in Microsoft Word, Google Docs, or LibreOffice will immediately display standard redline markup with Accept/Reject controls.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </section>
