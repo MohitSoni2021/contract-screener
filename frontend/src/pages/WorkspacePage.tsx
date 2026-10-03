@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { Files, Sparkles, ShieldCheck } from "lucide-react";
 import DocumentProcessingCard from "../components/DocumentProcessingCard";
 import UploadCard from "../components/UploadCard";
 import WorkspaceSidebar from "../components/WorkspaceSidebar";
@@ -15,7 +16,8 @@ import {
   uploadDocument,
 } from "../store/documentsSlice";
 
-const MAX_FILE_SIZE = 25 * 1024 * 1024;
+const MAX_FILE_SIZE = 15 * 1024 * 1024;
+const MAX_DOCUMENTS = 3;
 const IN_PROGRESS = new Set([
   "queued",
   "extracting",
@@ -69,12 +71,20 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
   async function upload(file?: File) {
     if (!file) return;
     dispatch(clearDocumentError());
+    if (documents.length >= MAX_DOCUMENTS) {
+      dispatch(
+        setDocumentError(
+          `Upload limit reached: You can upload a maximum of ${MAX_DOCUMENTS} documents. Please delete an existing document before uploading a new one.`,
+        ),
+      );
+      return;
+    }
     if (!/\.(pdf|docx)$/i.test(file.name)) {
       dispatch(setDocumentError("Choose a PDF or DOCX file."));
       return;
     }
     if (file.size > MAX_FILE_SIZE) {
-      dispatch(setDocumentError("This file is larger than the 25 MB limit."));
+      dispatch(setDocumentError("This file is larger than the 15 MB limit. Please upload a file less than 15 MB."));
       return;
     }
     void dispatch(uploadDocument({ token, file }));
@@ -108,20 +118,24 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
                 grounded in its source.
               </p>
             </div>
-            <div className="secure-badge">
-              <span>✳</span> Private by design
+            <div className="secure-badge flex items-center gap-1.5">
+              <ShieldCheck className="h-3.5 w-3.5 text-[#3f7655]" /> Private by design
             </div>
           </div>
           <div className="dashboard-summary" aria-label="Workspace overview">
             <div className="summary-item">
-              <span className="summary-icon">▤</span>
+              <span className="summary-icon flex items-center justify-center">
+                <Files className="h-4 w-4" />
+              </span>
               <div>
-                <strong>{documents.length}</strong>
+                <strong>{documents.length} / {MAX_DOCUMENTS}</strong>
                 <span>Uploaded documents</span>
               </div>
             </div>
             <div className="summary-item">
-              <span className="summary-icon summary-icon-green">⌁</span>
+              <span className="summary-icon summary-icon-green flex items-center justify-center">
+                <Sparkles className="h-4 w-4" />
+              </span>
               <div>
                 <strong>
                   {documents.reduce(
@@ -161,9 +175,17 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
                       )
                     }
                     onOpenChat={() => navigate(`/chat/${item.document_id}`)}
+                    onOpenRedline={() => navigate(`/redline/${item.document_id}`)}
                   />
                 ))}
-                  <UploadCard busy={busy} error={error} onUpload={upload} />
+                  <UploadCard
+                    busy={busy}
+                    error={error}
+                    onUpload={upload}
+                    limitReached={documents.length >= MAX_DOCUMENTS}
+                    docCount={documents.length}
+                    maxDocs={MAX_DOCUMENTS}
+                  />
               </div>
               {documents.length === 0 && (
                 <div className="dashboard-next-step">
@@ -172,7 +194,7 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
                     <strong>Your first document starts here</strong>
                     <span>
                       Contracts, briefs, policies, and other PDF or DOCX files
-                      up to 25 MB.
+                      up to 15 MB (limit: {MAX_DOCUMENTS} documents).
                     </span>
                   </div>
                   <span className="next-step-arrow">→</span>
