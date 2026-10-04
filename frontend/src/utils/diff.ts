@@ -26,8 +26,11 @@ export function diffWords(
   rightTokens: DiffToken[];
   hasDifferences: boolean;
 } {
-  // Short-circuit: identical text
-  if (leftText === rightText) {
+  // Short-circuit: identical text or identical after normalizing whitespace
+  if (
+    leftText === rightText ||
+    leftText.replace(/\s+/g, " ").trim() === rightText.replace(/\s+/g, " ").trim()
+  ) {
     return {
       leftTokens: [{ op: "same", text: leftText }],
       rightTokens: [{ op: "same", text: rightText }],

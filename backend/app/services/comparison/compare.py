@@ -272,7 +272,9 @@ def compare_contracts(doc_left: SourceDocument, doc_right: SourceDocument) -> di
 
         if right:
             matched_right_ids.add(right.id)
-            is_unchanged = left.text.strip() == right.text.strip()
+            left_norm = re.sub(r"\s+", " ", left.text).strip()
+            right_norm = re.sub(r"\s+", " ", right.text).strip()
+            is_unchanged = left_norm == right_norm
             category = _detect_category(left.title, f"{left.text} {right.text}")
             if is_unchanged:
                 matched.append(

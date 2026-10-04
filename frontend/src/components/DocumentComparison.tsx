@@ -849,6 +849,8 @@ function SideBySideClauseCard({
     return diffWords(sec.leftText, sec.rightText);
   }, [isModified, sec.leftText, sec.rightText]);
 
+  const hasRealDifferences = isModified && (diff?.hasDifferences ?? false);
+
   return (
     <article
       id={`${side}-${sec.id}`}
@@ -863,11 +865,15 @@ function SideBySideClauseCard({
       <div className="font-sans flex items-center justify-between pb-2 mb-2.5 border-b border-[#edf3ee] flex-wrap gap-1.5">
         <div className="flex items-center gap-2">
           <span className="font-bold text-[#1f3a2c] text-xs">{sec.title}</span>
-          {isModified && (
+          {hasRealDifferences ? (
             <span className="text-[10px] font-medium text-[#7c622a] bg-[#fef9ec] border border-[#fef0cb] px-1.5 py-0.5 rounded">
               {side === "left" ? "Prior wording" : "Revised wording"}
             </span>
-          )}
+          ) : !isDeleted && !isAdded ? (
+            <span className="text-[10px] font-medium text-[#5c7768] bg-[#f1f5f2] border border-[#e2eae4] px-1.5 py-0.5 rounded">
+              Unchanged
+            </span>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -881,19 +887,24 @@ function SideBySideClauseCard({
               [+] INSERTED
             </span>
           )}
-          {isModified && (
+          {hasRealDifferences && (
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
               [Δ] MODIFIED
             </span>
           )}
+          {!isDeleted && !isAdded && !hasRealDifferences && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#f1f5f2] text-[#426150] border border-[#d6e2d9]">
+              UNCHANGED
+            </span>
+          )}
 
-          {sec.significance === "high" && (
+          {sec.significance === "high" && hasRealDifferences && (
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-800 border border-red-200">
               HIGH RISK
             </span>
           )}
 
-          {isModified && diff && (
+          {hasRealDifferences && diff && (
             <button
               type="button"
               onClick={(e) => {
@@ -912,7 +923,7 @@ function SideBySideClauseCard({
       </div>
 
       {/* Clean Single-Line Risk & Impact Note on Right Pane (No duplicate text walls!) */}
-      {side === "right" && isModified && (sec.favorsParty !== "Neutral" || sec.explanation) && (
+      {side === "right" && hasRealDifferences && (sec.favorsParty !== "Neutral" || sec.explanation) && (
         <div className="font-sans mb-3 rounded-lg border border-[#e6eee8] bg-[#f8faf8] px-3 py-2 text-[11px] text-[#334e3e] flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 font-semibold text-[#1c3c2a]">
             <Scale className="h-3 w-3 text-[#25523a]" />
@@ -930,7 +941,7 @@ function SideBySideClauseCard({
 
       {/* Clause Text Content with Word-Level Diff Highlighting */}
       {text ? (
-        isModified && diff ? (
+        hasRealDifferences && diff ? (
           <div className="whitespace-pre-wrap leading-relaxed text-[#23382c]">
             {side === "left"
               ? (() => {

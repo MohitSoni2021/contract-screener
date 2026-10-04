@@ -69,7 +69,7 @@ def diff_words(
     Returns separate token lists for the left side ("same" vs "deleted")
     and right side ("same" vs "inserted").
     """
-    if left_text == right_text:
+    if left_text == right_text or re.sub(r"\s+", " ", left_text).strip() == re.sub(r"\s+", " ", right_text).strip():
         return (
             [DiffToken(op="same", text=left_text)],
             [DiffToken(op="same", text=right_text)],
