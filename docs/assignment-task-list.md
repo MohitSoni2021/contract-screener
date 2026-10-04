@@ -1,125 +1,51 @@
-# Hiring Assignment Task List
+# Hiring assignment coverage
 
-Status is based on the implementation currently in the repository and the requirements in `hiring assignment.pdf`.
+This checklist compares the current repository implementation with the supplied engineering assignment. It is a code inventory, not a claim that every path has been validated against the evaluator's documents or deployment environment.
 
-## Status legend
-
-- **Done**: implemented in the current code path.
-- **Partial**: a useful implementation exists, but an assignment requirement or edge case is still missing.
-- **Remaining**: not implemented or not yet demonstrated.
+Legend: **Implemented** means a code path exists; **Partial** means meaningful behavior exists with a material gap; **Not implemented** means the feature is absent in the current app.
 
 ## Part A: Core features
 
-### 1. Document upload and processing
-
-- [x] **Done**: Accept PDF and DOCX uploads.
-- [x] **Done**: Reject unsupported extensions and validate basic file signatures.
-- [x] **Done**: Enforce an upload-size limit with a clear error.
-- [x] **Done**: Extract PDF text with page/block locations.
-- [x] **Done**: Extract DOCX paragraphs and tables with block locations.
-- [x] **Done**: Queue processing in MongoDB and run it through a background worker.
-- [x] **Done**: Show queued, extracting, chunking, embedding, and indexing progress.
-- [x] **Done**: Detect empty or scanned PDFs with no readable text and fail processing instead of saving an apparently valid empty document.
-- [x] **Done**: Persist canonical extracted text and indexed chunks.
-- [x] **Done**: Maintain a document library of multiple active uploaded files, with owner-scoped listing, opening, processing, and deletion in the UI and API.
-- [x] **Done**: Open and delete an uploaded document, including cleanup/invalidation of its vector index.
-- [ ] **Partial**: Added focused automated tests for invalid files, empty files, scanned PDFs, DOCX tables, size limits, and verified quote isolation. Test execution and worker-recovery coverage remain to be completed in a working test environment.
-
-### 2. Chat with a document
-
-- [x] **Done**: Ask questions about a ready document.
-- [x] **Done**: Retrieve document passages using embeddings and mandatory owner/document filters.
-- [x] **Done**: Stream answer tokens over SSE.
-- [x] **Done**: Show retrieval and answer-writing status in the UI.
-- [x] **Done**: Stop an answer from the UI; preserve the generated partial response as cancelled/partial history.
-- [x] **Done**: Save conversations and messages per document.
-- [x] **Done**: Reopen saved conversations.
-- [ ] **Remaining**: Add automated tests for stream completion, client cancellation, server disconnect cleanup, partial persistence, and retry/error states.
-
-### 3. Verified quotes
-
-- [x] **Done**: Keep source text and source locations in indexed payloads.
-- [x] **Done**: Verify indexed passages against canonical document text before displaying them.
-- [x] **Done**: Use Unicode/whitespace normalization so extraction line-break differences do not cause false quote failures.
-- [x] **Done**: Recompute quote locations from application-owned document text rather than trusting model positions.
-- [x] **Done**: Remove unsupported source markers and avoid presenting unverified model text as a quote.
-- [x] **Done**: Return an explicit insufficient-evidence response when retrieval cannot support an answer.
-- [ ] **Partial**: The current answer protocol cites verified retrieved chunks, and focused tests cover normalized passages and wrong-document source rejection. Adversarial tests for invented quotes, paraphrases, duplicate passages, wrong source IDs, cross-line/page quotes, and answers with no evidence are still needed.
-- [ ] **Remaining**: Decide and implement a strict policy for factual answer claims that have no source marker; currently the model is instructed to mark claims, but this should be enforced with tests and response validation.
-
-### 4. Large documents
-
-- [x] **Done**: Chunk documents with overlap and location metadata.
-- [x] **Done**: Use semantic retrieval for focused questions.
-- [x] **Done**: Use bounded, distributed excerpts and coverage metadata for broad questions.
-- [x] **Done**: Qualify incomplete document-wide answers instead of claiming that an item is absent from the entire document.
-- [ ] **Partial**: The broad strategy samples a bounded number of indexed chunks, so it is safer than pretending to read everything but is not a complete hierarchical section/clause search.
-- [ ] **Remaining**: Test with a 150-page contract and verify ingestion limits, retrieval quality, timeout behavior, broad-question coverage, and absence claims.
+| Requirement | Status | Current behavior and limits |
+| --- | --- | --- |
+| PDF/DOCX upload and reject other types | Implemented | Checks extension, signature, empty files, upload size, document quota, and PDF page limit. |
+| Extract and store text | Implemented | Extracts PDF text blocks and DOCX paragraphs/tables; stores canonical text and source block metadata. No OCR. |
+| Processing progress and scanned PDF feedback | Implemented | Queued worker stages and percentages are visible; empty-text documents fail with a scanned-PDF/OCR message. |
+| Document library, open, and delete | Implemented | Authenticated document list and source viewer; delete cleans up associated stored data and index where available. |
+| Streamed chat and stop | Implemented | Chat uses SSE token events; active messages can be cancelled while retaining partial output. |
+| Conversation history by document | Implemented | Conversations and messages are saved in MongoDB and can be listed/reopened. Context sent to a response is bounded. |
+| Verified quotes | Implemented | Citations are checked against canonical extracted text and source positions are computed by the server. Unsupported responses are constrained by evidence. |
+| Large-document handling | Partial | Chunked extraction/indexing, up to 600 PDF pages, bounded retrieval, and broad-mode coverage reporting exist. Actual success also depends on file and text-size limits, provider limits, timeouts, and source quality. |
 
 ## Part B: Advanced features
 
-### 5. Citation highlighting
-
-- [ ] **Partial**: PDF citations open in a PDF viewer and highlight matching text-layer items using normalized text.
-- [ ] **Partial**: The current matching is heuristic and does not yet guarantee correct highlighting for multi-line quotes, quotes crossing page breaks, or repeated identical passages.
-- [ ] **Remaining**: Build a robust extraction-to-PDF text-span mapping, select the correct occurrence, navigate across all affected pages, and add tests for line breaks, page breaks, and duplicate text.
-- [ ] **Partial**: DOCX citations show verified block excerpts and block ranges, but there is no rendered DOCX viewer with passage highlighting.
-
-### 6. Multi-document questions
-
-- [ ] **Remaining**: Allow several documents to be selected for one question.
-- [ ] **Remaining**: Retrieve from only the selected owned document IDs.
-- [ ] **Remaining**: Generate a comparative answer rather than separate per-document answers.
-- [ ] **Remaining**: Verify every quote against its own document and include document name/ID in each citation.
-- [ ] **Remaining**: Add UI controls for selection, loading, empty, partial, and error states.
-- [ ] **Remaining**: Add tests for cross-document isolation and mixed evidence.
-
-### 7. Document comparison
-
-- [ ] **Remaining**: Add a comparison workflow for two document versions.
-- [ ] **Remaining**: Segment documents by clause/paragraph and align corresponding sections.
-- [ ] **Remaining**: Classify substantive changes separately from wording-only changes.
-- [ ] **Remaining**: Generate a plain-language summary of each substantive change.
-- [ ] **Remaining**: Support significance filtering and sorting.
-- [ ] **Remaining**: Show both source versions and preserve traceability to each document.
-- [ ] **Remaining**: Test monetary changes, moved liability caps, inserted/deleted clauses, reordered paragraphs, and formatting-only edits.
+| Requirement | Status | Current behavior and limits |
+| --- | --- | --- |
+| Citation highlighting | Partial | PDF.js text-layer matching and DOCX extracted-text highlighting exist. PDF text splitting, duplicate wording, and DOCX pagination can make visual locations approximate. |
+| Multi-document questions | Partial | Comparative chat accepts two documents and verifies citations per source. A separate agent endpoint accepts up to five documents, but the current user-facing research page selects one document and there is no general multi-document chat workflow. |
+| Document comparison | Implemented | Section-level matching, change categories, summaries, and a question interface across a pair are present. Compare alignment and legal-impact explanations need source review. |
 
 ## Part C: selected challenge
 
-The implementation plan chooses **Option 2: Agentic document research**.
+**Selected option: Agentic document research.** A bounded model/tool loop is implemented with search and document-inspection tools, a visible trace, argument validation, repeated-call handling, round/token bounds, and quote verification. The final synthesis is emitted after the loop rather than streamed token-by-token. Tool matching and clause identification rely on extracted text and heuristics.
 
-- [ ] **Remaining**: Define strict tools such as `search_document`, `get_section`, and `list_clauses`.
-- [ ] **Remaining**: Implement a real multi-round model/tool loop.
-- [ ] **Remaining**: Stream tool activity to the UI, including what is being searched and why.
-- [ ] **Remaining**: Enforce a configurable maximum number of rounds and a token/cost boundary.
-- [ ] **Remaining**: Validate tool names and arguments; recover from malformed or invented tool calls without crashing.
-- [ ] **Remaining**: Run the existing quote verification pipeline on the final answer.
-- [ ] **Remaining**: Add a demo flow and document known limitations honestly.
+Tracked-change redlining also exists as a separate feature, but the research option is the documented Part C selection. Redlining from PDF cannot preserve the original page layout; see [advanced features](advanced-features.md).
 
-Tracked-change redlining is not selected and should remain out of scope unless the Part C decision changes. Implementing both options would add unnecessary delivery risk.
+## Product and account notes
 
-## Quality, security, and operational work
-
-- [x] **Done**: Keep AI configuration in environment variables; do not commit API keys.
-- [x] **Done**: Scope document and vector access by authenticated owner/document filters.
-- [ ] **Partial**: Focused backend tests now cover upload validation, PDF/DOCX extraction, scanned PDFs, and quote isolation; chat-stream, security, worker-recovery, and integration coverage remain.
-- [ ] **Remaining**: Add adversarial/security tests for ID tampering, cross-user access, prompt injection in documents, malformed uploads, and stale vector isolation.
-- [ ] **Done**: Frontend typecheck/build and backend syntax compilation pass in the current development environment. Full linting and clean-environment test execution remain operational follow-up work.
-- [ ] **Remaining**: Test the deployed application with real PDF, DOCX, scanned PDF, long document, duplicate citation, and failed-provider scenarios.
+- The assignment assumes a single user and says login is not needed. The current app has ownership-scoped bearer authentication as a product extension.
+- The current API has no public registration endpoint; the UI's `/register` route redirects to sign-in. Provisioning/demo behavior should be replaced before public launch.
+- The default active document quota is three per account.
+- Default PDF page limit is 600; independent upload and extracted-text caps can still reject a book-sized PDF.
 
 ## Submission checklist
 
-- [ ] **Remaining**: Deploy the real working application and record the deployed URL.
-- [ ] **Remaining**: Add screenshots for upload, chat with verified quotes, citation highlighting, and comparison.
-- [ ] **Remaining**: Record a 3–5 minute demo covering upload, question, verification, citation navigation, comparison, and Part C work.
-- [ ] **Remaining**: Update the README with accurate finished/unfinished status, screenshots, deployed link, demo link, setup steps, environment variables, worker requirements, and known limitations.
-- [ ] **Remaining**: Write the short technical note covering quote verification/failure modes, large-document handling, Part C choice/progress, hardest problem, and next steps.
+The assignment asks for a repository link, working deployed link, README screenshots, a 3–5 minute demo, and a short implementation note. This repository documentation does not imply these external deliverables have been created. Record links and add real screenshots after the deployed application and demo are ready.
 
-## Recommended implementation order
+Suggested demo sequence:
 
-1. Remove the one-active-document restriction and complete the document library.
-2. Make citation highlighting reliable for multi-line, cross-page, and duplicate quotes.
-3. Build clause-level document comparison.
-4. Build multi-document questions with per-document verified citations.
-5. Implement the bounded agentic research loop and activity stream.
-6. Add focused automated tests, then deploy and perform the complete demo validation.
+1. Upload a PDF or DOCX and show processing progress.
+2. Ask a focused question and show the streaming answer and verified citation.
+3. Open the cited location in the document viewer.
+4. Compare two contract versions and inspect a substantive change.
+5. Show the research tool trace and explain its bounded behavior and known gaps.

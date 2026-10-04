@@ -1,31 +1,40 @@
-# Agentic Document Research
+# Agentic document research
 
-The Part C research workspace is available at `/research` for authenticated users. It is intentionally separate from ordinary document chat and document comparison.
+Agent research is available in the authenticated `/research` workspace as a bounded tool-using mode for one selected, ready document. A separate backend endpoint accepts one to five owned documents, but the current page is connected to the single-document flow. Research complements ordinary chat and the two-document comparison workspace.
 
 ## Demo flow
 
-1. Open **Agent research** from the workspace sidebar.
-2. Select a ready PDF or DOCX document.
-3. Use the prefilled question or choose **Run demo flow**.
-4. Watch each bounded research round and declared tool activity appear in the live trace.
-5. Review the final answer and its verified `[[S#]]` source markers.
+1. Open **Agent research** from the workspace navigation.
+2. Select a ready PDF or DOCX.
+3. Enter a research question or use the example flow.
+4. Review live status and the tools the model chose to call.
+5. Read the final findings and verified source quotes.
 
-## Strict tools
+## Tool loop
 
-The server exposes only these model tools:
+The backend does not send the entire document as one prompt. The model may use a limited set of document tools, including:
 
-- `search_document`: semantic search through the selected, user-owned document.
-- `get_section`: read a bounded excerpt around a named section.
-- `list_clauses`: list heading-like or numbered clauses, optionally filtered by topic.
+- `search_document` — find relevant passages in the selected document.
+- `get_section` — inspect a bounded section or excerpt.
+- `list_clauses` — list heading-like or numbered clauses.
+- Definition and page lookup tools where available in the research schema.
 
-Tool names and JSON arguments are validated server-side. Unknown tools and malformed arguments return safe tool errors to the model loop instead of crashing the request.
+The server validates tool names and arguments, limits rounds, detects repeated calls, and returns safe errors for malformed requests. Event streams can contain `status`, `tool_start`, `tool_result`, `answer_delta`, `final`, and `error` events. The final synthesis is emitted after the tool loop; it is not token-streamed throughout each model call.
 
-## Limits and known limitations
+## Limits and known behavior
 
-- The default maximum is 4 research rounds and 3,200 final-answer model tokens. Configure `RESEARCH_MAX_ROUNDS` and `RESEARCH_MAX_TOKENS` in the backend environment within the server-enforced bounds.
-- Tool activity is streamed to the browser, but the final answer is emitted after the bounded loop completes rather than token-by-token.
-- `get_section` currently uses extracted text matching and may miss headings with substantially different spelling or OCR errors.
-- `list_clauses` uses heading and numbering heuristics; it is not a legal clause parser.
-- Long documents remain bounded by the existing extraction, vector retrieval, and source-evidence limits. The agent must not treat an incomplete evidence set as proof that a clause is absent.
-- The final answer is source-marker filtered and uses the existing canonical-text/Qdrant quote verification pipeline. Uncited or invented source markers are removed.
-- Tracked-change redlining is out of scope for this option.
+- Defaults are `RESEARCH_MAX_ROUNDS=8` and `RESEARCH_MAX_TOKENS=3200`.
+- The server clamps rounds to 1–8 and final answer tokens to 500–12,000.
+- The configured chat model must support OpenAI-compatible tool/function calling.
+- Heading lookup and clause listing use extracted text and heuristics. OCR errors or unusual formatting can make results incomplete.
+- The agent can only rely on passages it inspected; an empty search result does not prove a provision is absent.
+- Final quotes are verified against canonical extracted text. This verifies quote presence, not the legal conclusion around it.
+- Research is bounded by processing limits and tool output limits; it is not an exhaustive legal review.
+
+## API
+
+- `POST /api/research` — non-streaming research request.
+- `POST /api/research/stream` — streaming research and trace.
+- `POST /api/agent/research` — multi-document capable endpoint accepting `documentIds` and `question`; currently not used by the research page.
+
+See [Advanced features](advanced-features.md) for the product-level overview.

@@ -1,73 +1,84 @@
 # Data model
 
-MongoDB is the source of truth for ownership and lifecycle in the current implementation. Qdrant is a derived search index and must never independently grant access.
+The backend uses MongoDB collections for application records and MongoDB GridFS for original file bytes. Qdrant contains derived vector points. IDs shown below are representative; the implementation uses opaque IDs and BSON ObjectIds where appropriate.
 
-## Tables
+## MongoDB collections
 
-### `users` (multi-user mode)
+### `users`
 
-- `id` (opaque primary key)
-- `created_at`
+Stores account identity and an Argon2 password hash. Email is normalized to lowercase and indexed uniquely. Public user responses contain the account ID, name, and email, never the password hash.
 
-The assignment's single-user mode may use a configured fixed owner instead of this table.
+### `documents`
 
-### `documents` (MongoDB collection)
+One record per uploaded source file. Important fields include:
 
-- `id` (opaque primary key)
-- `owner_id` (required; fixed owner in assignment mode)
-- `original_filename` (display only; never use as a path)
-- `stored_path`, `extension`, `canonical_text` (the extracted text used to verify indexed passages)
-- `media_type` (`application/pdf` or DOCX MIME)
-- `content_hash`
-- `status` (`queued`, `extracting`, `chunking`, `embedding`, `indexing`, `ready`, `failed`, `deleted`)
-- `stage`, `progress`, `indexed_chunks`, `error`
-- `failure_code` / `failure_message`
-- `active` (boolean)
-- `index_version`, `embedding_model`, `embedding_dimensions`
-- `page_count`, `chunk_count`
-- `created_at`, `updated_at`, `deleted_at`
+| Field | Meaning |
+| --- | --- |
+| `document_id` | Public opaque ID used by API routes |
+| `owner_id` | Server-resolved user ID |
+| `filename`, `extension`, `file_size` | Upload metadata |
+| `gridfs_id` | Reference to original bytes in GridFS |
+| `status`, `stage`, `progress`, `error` | Processing state surfaced to the client |
+| `active` | Whether this record can be selected |
+| `index_version` | Version used to scope Qdrant points |
+| `canonical_text` | Extracted text used for retrieval and citation verification |
+| `structure` | Extracted heading and contents metadata |
+| `page_count`, `chunk_count`, `indexed_chunks` | Processing metrics |
+| `worker_id`, `lease_expires_at` | Worker ownership and recovery state |
+| `created_at`, `updated_at`, `completed_at` | Lifecycle timestamps |
 
-Enforce at most one active document per owner. The current MongoDB implementation uses a unique partial index on `owner_id` where `active=true`.
-
-### `document_chunks` (optional relational mirror)
-
-- `id`, `document_id`, `owner_id`, `ordinal`
-- `canonical_text` or secure text-store reference
-- `normalized_text_hash`
-- `page_start`, `page_end`, `char_start`, `char_end`
-- `block_start`, `block_end` (paragraph/table block references for DOCX)
-- `index_version`, `created_at`
-
-The Qdrant payload should reference these stable IDs and carry only fields needed for filtered retrieval and source resolution. If full text is duplicated in Qdrant, define retention/deletion behavior for both copies.
+The configured default allows three active documents per user. The index on owner, active state, and creation date supports the document library. A unique compound index prevents a document ID from being assigned to multiple owners. Deletion removes original bytes and attempts to remove Qdrant points, then marks the record inactive with `deleted` status.
 
 ### `conversations`
 
-- `id`, `owner_id`, `document_id`
-- `title` (optional), `created_at`, `updated_at`
+Stores `conversation_id`, `owner_id`, `document_id`, title, and timestamps. The conversation belongs to both one user and one document. Listing is limited to the authenticated user's selected document.
 
 ### `messages`
 
-- `id`, `conversation_id`, `document_id`, `owner_id`
-- `role` (`user` or `assistant`)
-- `content`
-- `status` (`complete`, `partial`, `cancelled`, `failed`)
-- `citations` (verified chunk ID, exact source text, and server-resolved locations)
-- `created_at`
+Stores user and assistant messages with `conversation_id`, `document_id`, `owner_id`, role, content, status, timestamps, and verified citations. Assistant messages can also store a `coverage` object describing retrieval mode and evidence coverage. Cancelled and partial answers remain available in conversation history.
 
-### `citations`
+### `revoked_tokens`
 
-- `id`, `message_id`, `document_id`, `chunk_id`
-- `quote_text` (canonical verified text)
-- `verified` (only verified citations are shown as genuine quotes)
-- `page_start`, `page_end`, `char_start`, `char_end`
-- `block_start`, `block_end`
+Stores token IDs revoked at sign-out and their expiration time. MongoDB's TTL index removes expired entries.
 
-Store citations separately so quote verification status and navigation locations remain inspectable. Never use model-supplied location fields without server recomputation.
+### GridFS bucket `document_files`
 
-## Qdrant point
+Stores the original PDF or DOCX bytes. The file metadata includes document and owner IDs, the original filename, and content type.
 
-- Point ID: deterministic UUID from `(document_id, index_version, ordinal)` or generated UUID stored alongside the chunk.
-- Vector: embedding for the chunk's normalized text.
-- Payload: `owner_id`, `document_id`, `chunk_id`, `index_version`, `active`, `ordinal`, page and offset fields, and optionally chunk text.
+## Qdrant collection
 
-Every query filter combines exact `owner_id`, exact `document_id`, and the current `index_version`. Every delete uses the document's verified owner and document ID. Reindex by writing a new index version, then atomically switching the document's active version and removing old points.
+The collection name defaults to `document_chunks`. Each point represents one indexed text chunk:
+
+```json
+{
+  "id": "stable-vector-point-id",
+  "vector": [0.01, -0.02],
+  "payload": {
+    "owner_id": "user-id",
+    "document_id": "document-id",
+    "chunk_id": "stable-chunk-id",
+    "index_version": 1,
+    "active": true,
+    "ordinal": 12,
+    "text": "Extracted passage text",
+    "char_start": 12000,
+    "char_end": 15600,
+    "page_start": 9,
+    "page_end": 11,
+    "block_start": 30,
+    "block_end": 38
+  }
+}
+```
+
+Qdrant payload indexes are created for `owner_id`, `document_id`, `active`, and `index_version`. The backend must include owner and document filters in every vector operation. Index version separates points produced from different indexing runs.
+
+## Source locations
+
+- PDF blocks carry a page number and block number. Chunks retain character offsets into canonical text and the min/max page and block anchors of overlapping blocks.
+- DOCX blocks carry paragraph/table order. DOCX has no stable page number in the extracted representation, so its citations use block and character offsets.
+- The AI does not choose citation offsets. The server maps and verifies candidate quotes against canonical text.
+
+## Derived versus canonical data
+
+The original file and canonical extracted text are the source of truth. Qdrant points and outline metadata are derived and may be regenerated. A vector payload is accepted as evidence only after its text and character range agree with the canonical document text.

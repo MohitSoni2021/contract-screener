@@ -1,74 +1,50 @@
-# Issue: Broad questions over long PDFs return incomplete answers
+# Broad questions over long PDFs
 
-**Status:** Retrieval fix implemented; hierarchical summaries remain a future enhancement
-**Area:** Document ingestion, retrieval, and chat
+**Status:** Retrieval improvements implemented; hierarchical summaries remain future work  
+**Area:** Ingestion, retrieval, and chat
 
-## Observed behavior
+## Original symptom
 
-The 535-page book *The Subtle Art of Not Giving a Fuck* was accepted and indexed as 101 passages. A narrow request for a brief about the book returned an answer with citations. Broad requests such as “list all important points” and “list down the index” returned “I could not establish it from the retrieved passages.”
+A 535-page book was indexed as 101 passages. A short overview question returned a cited answer, while requests for all important points or the book's index returned an insufficient-evidence response.
 
-## Why this happens
+## Root cause
 
-The chat endpoint currently retrieves a small set of passages for every question:
+The original chat flow used six nearest vector chunks for every question. Those chunks can answer focused questions but may not cover a full book. A request for “all important points” requires evidence distributed across the document. A request for an “index” often means the table of contents, which is not reliably found by semantic nearest-neighbor search.
 
-- `backend/app/routers/chat.py` sets `TOP_K = 6` and embeds the current question for a dense-vector Qdrant search.
-- The query is filtered to the authenticated owner, document, active state, and index version. This is the data-isolation boundary that prevents one user's document from being searched for another user.
-- The answer prompt requires the model to use retrieved evidence and to say when it cannot establish an answer from that evidence.
-- Ingestion creates text chunks, but it does not create a document outline, chapter summaries, or a whole-document summary that broad questions can use.
+The evidence-first prompt correctly declined to invent a whole-book answer when its retrieved evidence did not support one. The failure was primarily question routing and coverage, rather than a model refusal.
 
-This is why the short brief can work: a few semantically related passages may support it. A request for *all* important points needs coverage across the book. Six nearest passages are not a representative sample of all 535 pages. A table of contents request is also a different task from semantic question answering; a dense search may not retrieve the contents pages even when they are present.
+## Implemented improvements
 
-The cautious response is therefore consistent with the evidence-first prompt. The primary issue is retrieval coverage and document structure, rather than the model refusing to answer. The word “index” is ambiguous; in this context the product should interpret it as the book's table of contents, or ask the user to clarify.
+- Detect focused, broad-document, and contents question modes.
+- Keep focused questions on the low-latency top-six vector search.
+- For broad questions, scroll indexed points filtered by owner, document, active state, and index version; validate point content against canonical text; then choose up to 18 passages distributed through the document.
+- Report chunk and page-range coverage. If selected evidence does not cover all indexed chunks, label the answer as partial and avoid claiming that a topic is absent from the full document.
+- For contents questions, use extracted contents text to rank passages and explicitly say when a reliable contents section was not found.
+- Extract and persist basic outline and contents metadata during ingestion.
+- Preserve source citations to verified canonical text.
 
-## Recommended fix
+## Remaining limits
 
-### 1. Keep the user/document security filter
+Distributed sampling improves breadth but does not provide exhaustive semantic coverage. For long documents, the model receives only a bounded subset of all verified chunks. The current outline and contents extraction is heuristic, and unusual layouts can hide the contents page or misidentify headings. A document coverage count describes what was indexed and supplied; it does not guarantee that every concept has been understood.
 
-Every retrieval path, including summaries and outline lookups, must remain scoped by the authenticated owner and document ID. Do not query a shared collection without those filters. Keep citations tied to the selected document's verified source passages.
+## Recommended next step
 
-### 2. Extract document structure during ingestion
+Build versioned section summaries in a map/reduce pipeline. Summarize bounded chunk groups per section or page range, retaining source chunk IDs. Synthesize document-level overviews from those summaries, and attach answer citations back to the original verified passages. Persist processing completion and coverage so interrupted jobs can resume and broad answers can report partial status accurately.
 
-Detect the table of contents, headings, and chapter or section boundaries. Store section names and page ranges alongside the existing chunk metadata. For PDFs where extraction cannot reliably detect structure, preserve page ranges and mark the outline as incomplete rather than inventing chapter names.
-
-### 3. Build hierarchical summaries for broad questions
-
-Summarize bounded groups of chunks per section or page range (map step), retaining links to the source chunk IDs and page spans. Then create a document-level summary from those section summaries (reduce step). Persist these as document-derived data associated with the same owner and document. Make this processing resumable and versioned so a failed or repeated ingestion does not mix old summaries with a new document index.
-
-For “important points,” synthesize from the section summaries and attach citations to the underlying verified passages. State which sections or page ranges were covered. If coverage is incomplete, label the answer as partial rather than claiming it includes every important point.
-
-### 4. Route broad questions to the right retrieval mode
-
-Classify requests such as “overview,” “brief,” “key points,” and “all important points” as document-wide questions and retrieve across the hierarchical summaries. Route “table of contents” or “index” requests to the extracted outline and, where useful, a lexical search of the contents pages. Keep the existing top-k vector retrieval for focused questions about a clause, fact, or passage.
-
-Hybrid lexical plus vector retrieval, diversified retrieval across sections, and reranking can improve focused search. Increasing `TOP_K` alone is not a complete solution: it increases context and cost, can return redundant passages, and still cannot demonstrate coverage of the whole book.
-
-### 5. Make coverage visible
-
-Track which sections or page ranges contributed to a broad answer. Return citations to original passages, not only to generated summaries. If the document has no reliable outline or some pages failed extraction, communicate that limit in the answer.
+Increasing the vector `TOP_K` alone is insufficient. It can increase token cost and redundant evidence without ensuring representation from the whole document.
 
 ## Acceptance criteria
 
-- A broad-summary question uses coverage from the document's sections, rather than only the six nearest chunks.
-- A table-of-contents question returns the extracted contents or reports that a reliable contents section was not found.
-- Every answer citation resolves to a verified source passage and page range in the selected user's document.
-- No summary or retrieval result can cross owner or document boundaries.
-- Incomplete extraction or summary processing is reported as partial coverage; the system does not claim an exhaustive answer without evidence of coverage.
-- Focused questions continue to use the existing low-latency passage retrieval path.
+- Focused questions retain the existing top-six retrieval behavior.
+- Broad questions retrieve evidence from across the selected document and display whether coverage is partial.
+- Contents questions return only supported outline information and clearly report when none was found.
+- Each answer citation opens a verified passage from the selected user's document.
+- All vector operations remain filtered by authenticated owner and document ID.
+- A future summary hierarchy remains versioned, resumable, and linked to original source passages.
 
-## Implemented baseline
+## Relevant code
 
-- Ingestion now persists a versioned, evidence-derived outline and detected contents text with the document.
-- Broad questions use owner/document/index-version filtered Qdrant scroll retrieval with evenly distributed verified passages, and report coverage metadata as complete or partial.
-- Contents and index questions use the extracted contents passages and explicitly refuse to invent a contents list when none was found.
-- Focused questions retain the six-passage dense retrieval path.
-- Citations are normalized with Unicode and whitespace tolerance, recomputed from canonical text, and the UI only renders citations marked verified.
-- Completed generated answers without a valid source marker are replaced with an explicit unsupported-answer response.
-
-This baseline does not yet generate persisted map/reduce summaries. It therefore reports passage/page coverage and partial status rather than claiming exhaustive section-level comprehension when the extracted outline or index is incomplete.
-
-## Relevant implementation locations
-
-- `backend/app/routers/chat.py` — `TOP_K`, Qdrant retrieval, evidence-grounded prompt, and answer generation.
-- `backend/app/services/chunking.py` — chunk boundaries and page metadata.
-- `backend/app/services/ingestion.py` — document processing and persistence flow.
-- `backend/app/services/qdrant_repository.py` — vector payload and owner/document filtering.
+- `backend/app/routers/chat.py` — mode detection, retrieval, coverage, prompt, and SSE events.
+- `backend/app/services/structure.py` — outline and contents heuristics.
+- `backend/app/services/ingestion.py` — extraction, metadata persistence, and indexing.
+- `backend/app/services/qdrant_repository.py` — ownership and index-version filters.

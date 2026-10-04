@@ -1,54 +1,50 @@
-# Implementation plan
+# Roadmap and known limitations
 
-The hiring assignment has a three-day deadline and evaluates working behavior over feature count. Finish a trustworthy single-document flow first, then spend remaining time on the advanced requirements.
+This page is the forward-looking plan based on the current repository state. It distinguishes completed code paths from work needed to make the product safer and more reliable for a public release.
 
-## Suggested order
+## Current baseline
 
-### 1. Foundation
+- React/TypeScript client with protected workspace, chat, comparison, research, and redline pages.
+- FastAPI backend with bearer authentication, MongoDB documents and conversation history, GridFS source files, and Qdrant vector indexing.
+- PDF/DOCX extraction, chunking, background ingestion progress, focused chat, document-wide and contents retrieval, citation checks, and source viewers.
+- Two-document comparison chat and section-level report.
+- Agentic document research with bounded tools and source checks.
+- DOCX tracked-change generation.
+- Project documentation and local setup guide.
 
-- FastAPI project, configuration, health endpoint, Qdrant Docker instructions, database migrations.
-- Upload validation for PDF/DOCX, generated document IDs, status lifecycle, document library/delete.
-- Text extraction with page/block references; fail clearly for image-only/scanned PDFs with no readable text.
-- Configurable ingestion caps, page-count preflight, and separate MongoDB-backed ingestion workers with renewable leases.
+See [assignment coverage](assignment-task-list.md) for feature-level status and gaps.
 
-### 2. Index and single-document chat
+## Recommended next work
 
-- Canonical text and chunk/source-location representation.
-- Batch OpenAI embeddings and Qdrant upsert with `owner_id`, `document_id`, `index_version` payload.
-- Centralized mandatory filter helper and tests for ownership scoping before enabling multi-user auth.
-- Similarity retrieval plus history-aware streamed answer; SSE cancellation persists partial output.
-- Persist conversations and messages per document.
+### 1. Replace demo access with a real account lifecycle
 
-The single-document chat flow, history API, SSE stream, source verification, and MongoDB-backed ingestion queue are implemented in the current starter. The points below remain completion criteria for validation and higher quality: adversarial quote checks, robust cancellation cleanup, and comprehensive clause coverage.
+Add explicit account creation, email verification or another controlled provisioning path, password recovery, abuse protection, and a production session strategy. Remove fixed demo account behavior from source before public deployment. This is the most important known product-readiness issue.
 
-### 3. Citation correctness and UI
+### 2. Validate end-to-end behavior on representative files
 
-- Structured model output references candidate chunk IDs and quotes.
-- Server resolves chunks, verifies quote text with whitespace-tolerant matching, and recomputes location.
-- Unsupported statements produce an explicit insufficient-evidence response.
-- PDF citation navigation with matching text-layer spans highlighted; DOCX citations show verified excerpts and stable block locations (rendered DOCX pagination is not provided).
-- Test adversarially: invented quote, paraphrase, quote duplicated, quote across line/page breaks, wrong chunk ID, and answer with no evidence.
+Use text-based PDFs, scanned PDFs, DOCX files with tables, long contracts, duplicate clauses, multi-page citations, and two contract versions. Record actual processing time, extraction coverage, provider calls, and failure states. Verify the current upload/text caps are acceptable for target workloads.
 
-### 4. Large and advanced document features
+### 3. Improve ingestion durability and operations
 
-- For long files, use hierarchical section/clause indexing or staged retrieval. Never claim comprehensive absence based only on top-k chunks. Track which sections were searched and qualify incomplete coverage.
-- Multi-document questions: user selects documents, retrieval filters by the selected owned IDs, citations include document IDs/names, and every quote is verified against its own document.
-- Comparison: segment both versions into clauses/paragraphs, align semantically, classify substantive changes (for example, monetary caps), and sort by significance. Keep the source text and explanation distinct.
+Run the worker as a separately supervised deployment role when scaling the API. Add queue depth, retry/backoff policy, dead-letter handling, processing metrics, readiness checks for MongoDB/Qdrant, and explicit reindex controls. Review cleanup behavior after partial Qdrant writes and storage failures.
 
-### 5. Part C choice
+### 4. Improve document-wide synthesis
 
-Choose **Option 2: Agentic document research** as the planned Part C challenge. It builds naturally on Python retrieval tools and large-document coverage, and it can expose concrete tool activity in the UI. Keep the loop bounded (for example, a small configurable maximum of rounds), validate tool names and arguments against strict schemas, handle malformed calls as recoverable errors, and run final quote verification unchanged. If delivery time is too short, show an honest partial implementation and explain the limitation rather than claiming it is complete.
+Current broad mode scrolls and verifies indexed chunks, then selects at most 18 distributed passages. It reports partial coverage when all chunks are not supplied. A stronger solution is a versioned hierarchy of section summaries built from bounded chunk batches, with each summary retaining source chunk references. Use that hierarchy for broad questions and keep citations attached to original passages. The contents extractor should also evolve from heuristics to robust structure detection with a visible confidence/coverage state.
 
-Tracked-change redlining is a viable alternative, but preserving DOCX formatting while writing genuine Word revisions is a separate high-risk document-engineering project. Do not attempt both Part C options under the assignment deadline.
+### 5. Strengthen source location and evaluation
 
-## Completion gates
+Improve PDF quote-to-render mapping for text spans split or repeated on a page. Define a stable DOCX viewer or conversion strategy for page-like navigation. Add a representative offline evaluation set for retrieval recall, quote validity, unsupported questions, broad coverage, and comparison classifications.
 
-- A complete answer is grounded only in retrieved document evidence; every displayed quote is verified.
-- Cross-owner access is impossible when authentication is enabled, including by changing IDs.
-- A 150-page test document does not silently become a partial-document answer.
-- Stream, stop, resume history, delete, error, and empty states are usable in the deployed app.
-- README accurately lists finished and unfinished behavior; include real screenshots, deployed link, and demo video when available.
+### 6. Complete product delivery materials
 
-## Scope note
+Add genuine screenshots, a deployed URL that has been checked, a 3–5 minute demo video, and the short technical note requested by the assignment. Avoid claiming unsupported features or results.
 
-The assignment says assume one user and no account system. The product request adds registration/login, so the starter implements auth and scopes uploads to the authenticated user. The current milestone enforces one active document per account, processes PDF/DOCX text in the background, and indexes it in Qdrant with mandatory owner/document payloads. Keep these filters mandatory in all future Qdrant access paths; never rely on an unfiltered shared Qdrant search.
+## Design principles for future changes
+
+- Keep MongoDB as the source of truth and Qdrant as a rebuildable derived index.
+- Apply owner and document scoping in every read, search, update, and delete.
+- Keep citation verification server-side and based on canonical extracted text.
+- Make incomplete extraction and retrieval coverage visible to the user.
+- Bound file work, model context, tool rounds, and retry behavior.
+- Store provider and database credentials only in server-side secret configuration.

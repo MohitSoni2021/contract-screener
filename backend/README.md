@@ -1,71 +1,68 @@
-# Elcara API
+# Backend guide
 
-FastAPI backend for accounts and authenticated single-document ingestion. MongoDB stores account/document state, OpenAI creates embeddings, and Qdrant stores location-aware document chunks.
+Elcara's backend is a FastAPI service. It authenticates requests, manages document records and original files, extracts text, creates embeddings, writes and searches Qdrant, streams chat responses, verifies citations, and implements document comparison, research, and redlining endpoints.
 
-## Configure and start
+## Run the API
+
+From this directory:
 
 ```bash
-cd backend
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Set `MONGODB_URI`, `JWT_SECRET_KEY`, and `OPENROUTER_API_KEY` in `backend/.env`. Embedding and chat requests use the OpenAI Python SDK pointed at OpenRouter's OpenAI-compatible endpoint. `OPENROUTER_BASE_URL` defaults to `https://openrouter.ai/api/v1`; `OPENROUTER_EMBEDDING_MODEL` or the legacy `OPENAI_EMBEDDING_MODEL` defaults to `openai/text-embedding-3-small`; `OPENROUTER_CHAT_MODEL` or `OPENAI_CHAT_MODEL` defaults to `openai/gpt-4o-mini`. Change these to models supported by your provider account if needed. Ingestion limits are configurable with `MAX_PDF_PAGES` (default 600), `MAX_UPLOAD_BYTES` (25 MiB), `MAX_EXTRACTED_CHARACTERS` (3 million), and `MAX_EXTRACTED_TEXT_BYTES` (12 MiB). From the repository root, start the included Qdrant service and verify it is reachable:
-
-```bash
-docker compose up -d qdrant
-curl http://localhost:6333/healthz
-```
-
-Qdrant uses a named Docker volume so indexed vectors survive container restarts. Then run the API:
+Configure `MONGODB_URI`, `JWT_SECRET_KEY`, and `OPENROUTER_API_KEY`. Start Qdrant separately, then run:
 
 ```bash
 uvicorn main:app --reload --port 8000
 ```
 
-In a second terminal, start one or more ingestion workers:
+The FastAPI lifespan initializes MongoDB indexes and starts the ingestion worker loop in the API process. `/api/health` is a lightweight liveness endpoint; `/docs` is FastAPI's interactive OpenAPI page.
+
+## Configuration
+
+All settings are read from environment variables, with `.env` loaded from this directory during local development. See [the environment reference](../docs/deployment-and-operations.md#environment-variables).
+
+The OpenAI SDK is initialized with `OPENROUTER_BASE_URL` and `OPENROUTER_API_KEY`. Model selection uses `OPENROUTER_CHAT_MODEL` and `OPENROUTER_EMBEDDING_MODEL`; legacy `OPENAI_CHAT_MODEL` and `OPENAI_EMBEDDING_MODEL` values are fallbacks. The SDK is the provider interface, while the default configured provider is OpenRouter.
+
+## API groups
+
+| Prefix | Purpose |
+| --- | --- |
+| `/api/auth` | Sign in, inspect current account, sign out |
+| `/api/documents` | Upload, list, inspect, retrieve, process, compare versions, and delete documents |
+| `/api/chat` and `/api/conversations` | Stream and manage document conversations |
+| `/api/chats` | Compatibility routes for chat retrieval, message streaming, cancellation, and deletion |
+| `/api/citations` | Retrieve a verified citation from a user's chat history |
+| `/api/research` | Bounded multi-round document research and tool trace |
+| `/api/compare` | Analyze and ask questions across two document versions |
+| `/api/redline` | Propose edits and return a DOCX with tracked changes |
+
+Request schemas and response examples are documented in [the API reference](../docs/api-reference.md). Runtime OpenAPI at `/docs` is the definitive contract for the checked-out version.
+
+## Processing lifecycle
+
+Uploads are stored in MongoDB GridFS and represented by an active document record. The API starts background processing after accepting an upload; the worker's lease and heartbeat fields allow a claim to be recovered if a process stops. The pipeline extracts canonical text, creates location-aware chunks and structure metadata, requests embeddings in batches, and upserts points to Qdrant. Progress is persisted on the document record and exposed through the document status route.
+
+If extraction, embedding, or indexing fails, processing is marked failed and the document's vectors are cleaned up where possible. A document is chat-ready only after the index is marked ready.
+
+## Important implementation constraints
+
+- Public registration is not currently implemented. The frontend `/register` route redirects to sign-in.
+- Document and vector operations must use the server-resolved user ID and document ID.
+- PDF and DOCX extraction produces text and location anchors; it does not perform OCR.
+- Broad and contents questions have separate retrieval modes; they do not use the same query path as focused questions.
+- The bounded agent research route streams tool activity and emits its final answer after the bounded loop.
+- Current document limits and defaults are listed in the root README and configuration reference.
+
+## Development checks
+
+The repository has pytest coverage for extraction, storage, and core document flows. Run the relevant checks after backend changes:
 
 ```bash
-cd backend
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
-python -m app.worker
+pytest
 ```
 
-Uploads are persisted as queued document records in MongoDB. Workers atomically claim jobs and renew a lease; if a worker dies, another worker can reclaim the job after the lease expires. Run workers with access to the same upload directory as the API. The MongoDB queue is a simple durable starter queue; for larger deployments, consider a dedicated broker and shared object storage.
-
-The API checks MongoDB connectivity and creates user, token, and one-active-document indexes on startup. It creates the Qdrant collection on the first successful embedding batch. API docs are at `http://127.0.0.1:8000/docs`.
-
-## Document lifecycle
-
-- `POST /api/documents` — authenticated multipart upload; accepts PDF/DOCX up to the configured upload limit and returns a queued document record immediately.
-- `GET /api/documents` — returns the authenticated user's active documents.
-- `GET /api/documents/{document_id}` — returns extraction/indexing stage and progress, scoped to the owner.
-- `GET /api/documents/{document_id}/conversations` — lists saved chats for the active document.
-- `GET /api/conversations/{conversation_id}` — reopens one saved conversation for its owner.
-- `POST /api/chat/stream` — retrieves owner/document-scoped passages, streams the answer as SSE, and saves the exchange.
-- `POST /api/research/stream` — runs bounded tool-calling contract research and emits `status`, `tool_start`, `tool_result`, `final`, `answer_delta`, and `error` SSE events.
-- `GET /api/documents/{document_id}/file` — serves the original file to its authenticated owner for source navigation.
-- `DELETE /api/documents/{document_id}` — removes the finished or failed document and its Qdrant vectors.
-
-PDF extraction preserves page numbers; DOCX extraction reads paragraphs and tables. Canonical extracted text is retained for citation checks. Text is chunked with overlap and indexed in embedding batches. Each vector carries the server-derived `owner_id`, `document_id`, source offsets, and page/block locations. `document_scope()` is the central owner-and-document filter for vector operations. The UI polls status and restores the active document after refresh.
-
-Chat embeds each question, retrieves up to six passages using both the authenticated owner and active document filter, then streams an answer over Server-Sent Events through the OpenAI SDK configured for OpenRouter. Conversation turns and verified citation excerpts are saved in MongoDB. A citation is shown only when its Qdrant passage matches the canonical extracted source text at its stored offsets after whitespace normalization. Clicking a PDF source opens the original file at the cited page and displays the verified passage; DOCX sources show their verified block passage.
-
-The first release supports text-based PDFs and DOCX files. It rejects PDFs without extractable text with an OCR guidance message. Defaults are 25 MiB upload, 600 PDF pages, 3 million extracted characters, and 12 MiB of extracted UTF-8 text. PDF page count is checked before extracting text; extraction runs off the API event loop and stops as soon as an extracted-text cap is crossed. Chunk-to-source mapping advances through source blocks rather than rescanning every block for every chunk. A MongoDB-backed worker queue uses atomic claims and expiring leases to recover jobs after worker crashes. Extraction and chunk construction are still bounded in memory by configured text limits; the original upload path is local, so multi-host workers need a shared mounted volume until object storage is added.
-
-## Authentication routes
-
-- `POST /api/auth/register` — `{ "name", "email", "password" }`; stores a normalized email and Argon2 password hash.
-- `POST /api/auth/login` — `{ "email", "password" }`.
-- `GET /api/auth/me` — requires `Authorization: Bearer <token>`.
-- `POST /api/auth/logout` — revokes the current token until it expires.
-
-## Current limitations
-
-Semantic retrieval is bounded to the six highest ranked chunks; it cannot prove that a clause is absent from a large document. PDF citations open the cited page and highlight matching text-layer spans; the verified quote remains visible beside the viewer because PDF text segmentation can differ from the extracted passage. DOCX citations show the verified excerpt and block location without an in-browser DOCX renderer. The starter queue has no separate broker, automatic retry policy for application-level failures, or object storage; workers must share the API's upload filesystem. OCR, email verification, password reset, rate limiting, refresh tokens, and production cookie sessions are also not implemented. The frontend keeps its access token in localStorage. Keep `.env` out of Git, use a least-privilege MongoDB user, and restrict MongoDB/Qdrant network access before deployment.
-
-## Agentic research
-
-Research uses the same authenticated document ownership and canonical extracted text as chat. The model calls strict tools for clause indexes, sections, searches, definitions, and pages; document text is not inserted wholesale into the planning prompt. Tool names and JSON arguments are validated, identical calls are suppressed, and the loop is capped by `RESEARCH_MAX_ROUNDS` (default 8, server maximum 8). Final output is limited by `RESEARCH_MAX_TOKENS` (default 3200, server range 500–12,000) and returned as structured findings with verified exact quotes. The configured `OPENROUTER_CHAT_MODEL` must support OpenAI-compatible function calling.
+Tests that need MongoDB, Qdrant, or provider access should be configured for those services. Keep credentials in local environment files and never place them in test fixtures or documentation.

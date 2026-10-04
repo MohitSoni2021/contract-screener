@@ -1,74 +1,95 @@
-# Elcara Contract Q&A
+# Elcara
 
-A document-grounded contract analysis app. A user uploads one PDF or DOCX per account; the Python API extracts text, creates embeddings and streamed answers through the OpenAI SDK configured for OpenRouter, and indexes private chunks in Qdrant.
+Elcara is a private contract workspace for reading, questioning, comparing, and revising PDF and DOCX agreements. Answers are grounded in extracted document text, and source quotes are checked against that text before the interface presents them as verified.
 
-## Project scope
+The application is built with a React and TypeScript frontend, a FastAPI backend, MongoDB, Qdrant, and the OpenAI SDK configured to call OpenRouter. Document extraction, indexing, retrieval, access checks, conversation storage, and quote verification are application responsibilities.
 
-The hiring assignment assumes a single user and explicitly says no account system is needed. The product direction asks for login and user-specific documents, so the app includes registration/login and scopes uploads and chats to the authenticated user. MongoDB enforces one active document per account.
+## What it does
 
-## Proposed stack
+- Sign in and work with documents associated with the signed-in account.
+- Upload PDF and DOCX files, see processing progress, and open or remove documents.
+- Ask questions in a streaming chat, stop an answer, and reopen saved conversations.
+- Use broad-document and contents retrieval modes, with visible coverage information.
+- Inspect verified citations and navigate to the source passage in the document viewer.
+- Compare two document versions and ask questions across the pair.
+- Run bounded agentic research with a live tool activity trace.
+- Propose edits and download a DOCX containing native tracked changes.
 
-- Python API: FastAPI
-- Document extraction: PyMuPDF (PDF) and python-docx (DOCX)
-- Vector database: local Qdrant Docker container
-- Document/account metadata: MongoDB
-- AI: OpenAI SDK routed through OpenRouter for embeddings and streamed answers. Parsing, chunking, persistence, Qdrant indexing, retrieval, access checks, and quote validation stay in the application.
-- Browser UI: Vite + React + TypeScript with React Router; consume chat events over Server-Sent Events (SSE).
-
-## User experience
-
-1. Upload one PDF or DOCX. Show validation and processing progress; reject other types and report scanned PDFs with no extractable text.
-2. Ask document questions, stream answers, stop generation, reopen saved conversations, and inspect source passages verified against the extracted text.
-3. Show source quotes only after server-side verification. Selecting a verified quote opens the cited PDF page and highlights matching source text in its rendered text layer; DOCX sources show the verified block excerpt.
-4. Reopen conversation history for the document. Replace or delete the document and its index explicitly.
-
-## Data flow
+## Product flow
 
 ```text
-PDF/DOCX upload
-  -> validate size/type and assign document_id + owner_id
-  -> queue document metadata in MongoDB for a leased ingestion worker
-  -> preflight page count and extract within configured text limits
-  -> normalize and split into overlapping, location-aware chunks
-  -> OpenAI embeddings -> Qdrant upsert with ownership and location payload
-  -> persist document metadata and processing status in MongoDB
+PDF or DOCX upload
+  -> validate file type, signature, size, and configured page/text limits
+  -> save original bytes in MongoDB GridFS and create document metadata
+  -> background worker extracts and stores canonical text and source locations
+  -> split text into overlapping chunks and create embeddings through OpenRouter
+  -> index chunks in Qdrant with owner, document, version, and location metadata
+  -> mark the document ready or return a visible processing error
 
 Question
-  -> authenticate/resolve owner on server
-  -> validate owner owns the active document
-  -> embed question -> Qdrant search with mandatory owner_id + document_id filter
-  -> combine retrieved evidence with recent conversation turns
-  -> OpenAI streamed answer with evidence references
-  -> verify every proposed quote against canonical extracted text
-  -> emit answer and verified citations to browser as SSE events
+  -> authenticate and resolve the user's ready document
+  -> choose focused, broad-document, or contents retrieval
+  -> filter every Qdrant operation by owner, document, active state, and version
+  -> stream model output and verify proposed citations against canonical text
+  -> save conversation, answer state, citations, and coverage in MongoDB
 ```
 
-## Starter scaffold
+## Technology
 
-The repository includes a Vite + React + TypeScript frontend in `frontend/` and a FastAPI backend in `backend/`. The frontend proxies `/api` calls to the API during development. Registration, login, session restore/logout, authenticated PDF/DOCX upload, extraction, chunking, OpenRouter embeddings through the OpenAI SDK, owner-filtered Qdrant indexing, streamed document chat, conversation history, and citation source checks are implemented. Citation selection opens the cited PDF page in a text-layer viewer and highlights matching source text, with the verified quote displayed alongside it.
+| Area | Current implementation |
+| --- | --- |
+| Web client | React 19, TypeScript, Vite, React Router DOM, Redux Toolkit, Tailwind CSS 3 |
+| API | Python 3.11+ recommended, FastAPI, Pydantic |
+| Account and document metadata | MongoDB through PyMongo's async client |
+| Original files | MongoDB GridFS; optional remote storage fallback is supported by the storage service |
+| Vector search | Qdrant, local or Qdrant Cloud |
+| Model access | OpenAI Python SDK with OpenRouter base URL by default |
+| PDF extraction/viewing | PyMuPDF on the server and PDF.js through React PDF in the browser |
+| DOCX extraction | python-docx; tracked changes are written as WordprocessingML |
 
-### Start the API
+## Run locally
 
-Start Qdrant once from the repository root before starting the API or worker:
+### Prerequisites
 
-```bash
-docker compose up -d qdrant
-curl http://localhost:6333/healthz
-```
+- Python 3.11 or newer.
+- Node.js 20.19+ or 22.12+ for the current Vite release.
+- MongoDB with a database user that can access the Elcara database.
+- Qdrant, either local Docker or a Qdrant Cloud endpoint.
+- An OpenRouter API key with access to the configured chat and embedding models.
 
-Then start the API:
+### 1. Configure the backend
 
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.example .env
+```
+
+Set at least `MONGODB_URI`, `JWT_SECRET_KEY`, and `OPENROUTER_API_KEY` in `backend/.env`. Set `QDRANT_URL=http://localhost:6333` for local Qdrant, or configure `QDRANT_CLUSTER_ENDPOINT` and `QDRANT_API_KEY` for Qdrant Cloud.
+
+### 2. Start local Qdrant
+
+From the repository root:
+
+```bash
+docker compose up -d qdrant
+```
+
+Qdrant data is stored in the named Docker volume `qdrant_storage`.
+
+### 3. Start the API
+
+From `backend/`, with the virtual environment active:
+
+```bash
 uvicorn main:app --reload --port 8000
 ```
 
-In another terminal, run the MongoDB-backed ingestion worker with `python -m app.worker` from `backend/`. The worker claims queued documents with expiring leases; configure the limits in `backend/.env` (`MAX_PDF_PAGES=600`, `MAX_UPLOAD_BYTES=26214400`, `MAX_EXTRACTED_CHARACTERS=3000000`, `MAX_EXTRACTED_TEXT_BYTES=12582912`). API and worker must share the upload directory.
+The API lifespan connects to MongoDB, creates required indexes, and starts the ingestion worker loop. The health endpoint is `http://localhost:8000/api/health`; interactive API documentation is available at `http://localhost:8000/docs`.
 
-### Start the frontend
+### 4. Start the frontend
 
 In another terminal:
 
@@ -78,39 +99,39 @@ npm install
 npm run start
 ```
 
-Tailwind CSS v3 is configured through `tailwind.config.js` and `postcss.config.js`; directives are in `src/index.css`. Use Node.js 20.19+ or 22.12+ for the current Vite release.
+Open `http://localhost:5173`. Vite proxies `/api` to the local backend. The frontend production API base can be set with `VITE_API_BASE_URL`.
 
-The React frontend uses React Router DOM: `/login` and `/register` render the authentication pages, while `/workspace` is protected and requires a valid session. Route components live in `frontend/src/pages/`; shared UI lives in `frontend/src/components/`.
+## Configuration
 
-### Configure and start the backend
+Copy `backend/.env.example` to `backend/.env`. See [configuration and deployment](docs/deployment-and-operations.md) for every setting and deployment guidance. Never commit environment files, database connection strings, or API keys.
 
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn main:app --reload --port 8000
-```
+Important defaults include a 600-page PDF limit, 15 MiB maximum upload, three active documents per account, three million extracted characters, and 12 MiB extracted text. These are safety limits, not a promise that every document at the maximum will process within a fixed time.
 
-Set `MONGODB_URI`, `JWT_SECRET_KEY`, and `OPENROUTER_API_KEY` in `backend/.env`. `OPENROUTER_CHAT_MODEL` and `OPENROUTER_EMBEDDING_MODEL` can select models; the defaults are documented in the backend guide. Keep `.env` out of source control. Authentication and chat route details and limitations are in [`backend/README.md`](backend/README.md). The assignment PDF is included in this folder as `hiring assignment.pdf`.
+## Account access status
 
-Do not commit `.env` files or API keys. The assignment PDF is included in this folder as `hiring assignment.pdf`.
-
-## Requirements and delivery checklist
-
-The evaluation asks for PDF/DOCX upload, extraction and status, a document library, streaming/cancellable chat, per-document history, verified quotes, large-document behavior, citation highlighting, multi-document questions, clause-level comparison, and one Part C challenge. Current implementation covers authentication, single-document extraction/indexing, streamed single-document chat, conversation history, verified source passages, and PDF text-layer citation highlighting. Multi-document questions, comparison, and the selected Part C option are still planned. The implementation sequence and chosen Part C option are described in `docs/implementation-plan.md`.
-
-The submission also needs screenshots, a deployed link, and a 3–5 minute demo video. Add those only when they exist.
+The backend currently exposes sign-in, current-user, and sign-out routes, but does not expose public account registration. The `/register` frontend route redirects to `/login`. The UI also includes an automated demo sign-in path. Before making a public production release, replace demo-only access with an intentional account provisioning flow and remove any fixed credentials from application code.
 
 ## Documentation
 
+Start at the [documentation index](docs/README.md).
+
+- [Product overview](docs/product-overview.md)
+- [Local setup](docs/getting-started.md)
 - [Architecture and isolation](docs/architecture.md)
 - [Data model](docs/data-model.md)
-- [Implementation plan](docs/implementation-plan.md)
+- [API reference](docs/api-reference.md)
+- [Document processing and limits](docs/document-processing.md)
+- [Chat, retrieval, and citations](docs/chat-and-citations.md)
+- [Advanced features](docs/advanced-features.md)
+- [Agentic research](docs/agentic-research.md)
+- [Security and privacy](docs/security-and-privacy.md)
+- [Deployment and operations](docs/deployment-and-operations.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Hiring assignment coverage](docs/assignment-task-list.md)
+- [Roadmap and known limitations](docs/implementation-plan.md)
+- [Broad-question retrieval issue](docs/issue-broad-book-questions.md)
+- [Backend guide](backend/README.md)
 
-## Agentic research
+## Hiring assignment delivery
 
-The authenticated `/research` workspace adds bounded contract research without replacing ordinary chat. The model receives strict document tools instead of the full document in its prompt: it can list clauses, read a section, search canonical text, inspect definitions, and read a page. Tool calls are validated, repeated calls are suppressed, and the loop stops at the configured round limit. Final findings keep only quotes that match canonical extracted text.
-
-Set `RESEARCH_MAX_ROUNDS` and `RESEARCH_MAX_TOKENS` in `backend/.env`. The server clamps these values to 1–8 rounds and 500–12,000 tokens. The selected `OPENROUTER_CHAT_MODEL` must support OpenAI-compatible tool/function calling.
+The repository contains the app source and local setup instructions. The assignment also asks for screenshots, a working deployed link, a 3–5 minute demo video, and a short implementation note. Add links or images to this README when those deliverables are prepared; this document does not claim that they are present.
