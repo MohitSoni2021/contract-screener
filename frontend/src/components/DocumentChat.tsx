@@ -87,6 +87,7 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
   const [conversations, setConversations] = useState<ChatConversation[]>([])
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [question, setQuestion] = useState('')
+  const isPdf = document.filename.toLowerCase().endsWith('.pdf')
   const [busy, setBusy] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(true)
   const [stageMessage, setStageMessage] = useState('')
@@ -179,7 +180,10 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
     let objectUrl = ''
     setSourceUrl('')
     setSourceLoading(true)
-    api(`/api/documents/${document.document_id}/file`, { signal: controller.signal })
+    const filePath = isPdf
+      ? `/api/documents/${document.document_id}/file`
+      : `/api/documents/${document.document_id}/file?format=pdf`
+    api(filePath, { signal: controller.signal })
       .then((response) => response.blob())
       .then((blob) => {
         if (!active) return
@@ -187,7 +191,7 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
         setSourceUrl(objectUrl)
       })
       .catch((cause) => {
-        if (active && !(cause instanceof Error && cause.name === 'AbortError')) setChatError('The original PDF could not be opened.')
+        if (active && !(cause instanceof Error && cause.name === 'AbortError')) setChatError('The document preview could not be opened.')
       })
       .finally(() => { if (active) setSourceLoading(false) })
     return () => {
@@ -195,7 +199,7 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
       controller.abort()
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [api, document.document_id, document.filename, originalDocumentOpen, selectedCitation])
+  }, [api, document.document_id, document.filename, isPdf, originalDocumentOpen, selectedCitation])
 
 
   function startNewConversation() {
@@ -314,7 +318,6 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
     details?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
-  const isPdf = document.filename.toLowerCase().endsWith('.pdf')
   const sourcePanelStatus = busy ? stageMessage || 'Verifying source passages…' : loadingHistory ? 'Loading saved sources…' : ''
 
   return (
@@ -494,8 +497,7 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
             </div>
             {selectedCitation && <div className="source-panel-viewer">
               {sourceLoading && <div className="source-panel-viewer-status" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" />Opening source…</div>}
-              {isPdf && sourceUrl && <Suspense fallback={<div className="source-panel-viewer-status" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" />Loading PDF viewer…</div>}><PdfCitationViewer key={selectedCitation.chunk_id} sourceUrl={sourceUrl} citation={selectedCitation} /></Suspense>}
-              {!isPdf && <div className="source-panel-docx-quote"><div className="citation-heading">EXACT EXTRACTED TEXT</div><blockquote><mark>{selectedCitation.quote}</mark></blockquote></div>}
+              {sourceUrl && <Suspense fallback={<div className="source-panel-viewer-status" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" />Loading PDF viewer…</div>}><PdfCitationViewer key={selectedCitation.chunk_id} sourceUrl={sourceUrl} citation={selectedCitation} /></Suspense>}
             </div>}
           </div>}
         </div>
@@ -507,21 +509,13 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
               <div><span className="eyebrow">{originalDocumentOpen ? 'ORIGINAL DOCUMENT' : `VERIFIED SOURCE · ${citationLocation(selectedCitation!, isPdf)}`}</span><h2>{originalDocumentOpen ? document.filename : `Passage from ${document.filename}`}</h2></div>
               <button className="text-button" onClick={() => { setSelectedCitation(null); setOriginalDocumentOpen(false) }}>Close</button>
             </header>
-            <div className={`source-modal-body ${isPdf ? 'has-pdf' : ''} ${originalDocumentOpen ? 'original-document-body' : ''}`}>
-              {isPdf && (
-                <div className="source-pdf-viewer">
-                  {sourceLoading && <div className="m-auto flex items-center gap-2 text-xs text-[#829087]" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" /> Opening the original PDF…</div>}
-                  {sourceUrl && <Suspense fallback={<div className="m-auto flex items-center gap-2 text-xs text-[#829087]" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" /> Loading PDF viewer…</div>}>
-                    <PdfCitationViewer key={selectedCitation?.chunk_id ?? 'original-document'} sourceUrl={sourceUrl} citation={selectedCitation} />
-                  </Suspense>}
-                </div>
-              )}
-              {!isPdf && originalDocumentOpen && <div className="source-quote-panel original-docx-panel"><div className="citation-heading">ORIGINAL DOCX FILE</div><p>This document format cannot be rendered inside the browser.</p>{sourceUrl ? <a className="text-button" href={sourceUrl} target="_blank" rel="noreferrer">Open original document</a> : <div className="text-xs text-[#829087]">Preparing the original file…</div>}</div>}
-              {selectedCitation && !originalDocumentOpen && <div className="source-quote-panel">
-                <div className="citation-heading">EXACT EXTRACTED TEXT</div>
-                <blockquote><mark>{selectedCitation.quote}</mark></blockquote>
-                <p>This passage was matched to the document text before it was shown.</p>
-              </div>}
+            <div className={`source-modal-body has-pdf ${originalDocumentOpen ? 'original-document-body' : ''}`}>
+              <div className="source-pdf-viewer">
+                {sourceLoading && <div className="m-auto flex items-center gap-2 text-xs text-[#829087]" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" /> Opening the original document…</div>}
+                {sourceUrl && <Suspense fallback={<div className="m-auto flex items-center gap-2 text-xs text-[#829087]" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" /> Loading PDF viewer…</div>}>
+                  <PdfCitationViewer key={selectedCitation?.chunk_id ?? 'original-document'} sourceUrl={sourceUrl} citation={selectedCitation} />
+                </Suspense>}
+              </div>
             </div>
           </section>
         </div>

@@ -234,6 +234,7 @@ async def get_document_status(
 @router.get("/{document_id}/file")
 async def get_document_file(
     document_id: str,
+    format: str | None = None,
     user: AuthenticatedUser = Depends(get_current_user),
     database: Any = Depends(get_database),
 ) -> Response:
@@ -243,6 +244,22 @@ async def get_document_file(
     file_bytes = await get_document_bytes(database, document)
     if file_bytes is None:
         raise HTTPException(status_code=404, detail="The original document file is unavailable.")
+
+    # Convert DOCX to PDF on demand when format="pdf" or requested for PDF preview
+    if document["extension"] == ".docx" and format == "pdf":
+        try:
+            import fitz
+            doc = fitz.open(stream=file_bytes, filetype="docx")
+            pdf_bytes = doc.convert_to_pdf()
+            stem = Path(document["filename"]).stem
+            return Response(
+                content=pdf_bytes,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'inline; filename="{stem}.pdf"'},
+            )
+        except Exception as exc:
+            logger.warning("Could not convert docx to pdf on demand: %s", exc)
+
     media_type = "application/pdf" if document["extension"] == ".pdf" else (
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )

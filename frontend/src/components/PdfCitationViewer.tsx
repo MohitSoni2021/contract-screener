@@ -24,6 +24,22 @@ export default function PdfCitationViewer({
   const viewerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (citation?.page_start) {
+      setPage(citation.page_start);
+    }
+  }, [citation?.page_start]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const el = viewerRef.current?.querySelector(".pdf-source-highlight");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [page, citation]);
+
+  useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(([entry]) =>
