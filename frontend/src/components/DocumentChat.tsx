@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, ArrowLeft, PanelLeftClose, PanelLeft, GitCompare, FileText } from 'lucide-react'
 import type { ChatCitation, ChatConversation, ChatCoverage, ChatMessage, UploadedDocument, User } from '../types'
 import Brand from './Brand'
 import { apiUrl } from '../config'
@@ -320,7 +321,17 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
     <main className="fixed inset-0 z-20 flex h-dvh min-h-0 w-full overflow-hidden bg-[#f6f7f4] text-[#252b28]" aria-label="Chat with your document">
       {sidebarOpen && <button aria-label="Close sidebar" className="fixed inset-0 z-30 bg-[#17251d]/35 lg:hidden" onClick={() => setSidebarOpen(false)} />}
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-[min(84vw,300px)] flex-col border-r border-[#e5eae5] bg-white px-4 pb-4 pt-4 shadow-xl transition-transform duration-200 lg:relative lg:z-10 lg:w-[288px] lg:shrink-0 lg:shadow-none ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:-ml-[288px] lg:translate-x-0'}`} aria-label="Document and conversation sidebar" aria-hidden={!sidebarOpen} inert={!sidebarOpen}>
-        <div className="flex h-11 items-center"><Brand home /></div>
+        <div className="flex h-11 items-center justify-between">
+          <Brand home />
+          <Link
+            to="/workspace"
+            className="flex items-center gap-1.5 rounded-lg border border-[#d2ded5] bg-[#f7faf8] px-2.5 py-1 text-xs font-semibold text-[#25523a] transition hover:bg-[#ebf3ed]"
+            title="Return to Workspace"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span>Workspace</span>
+          </Link>
+        </div>
         <button className="mt-5 flex w-full items-center justify-center gap-2 rounded-md bg-[#245d4d] px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-[#1b4d3f] disabled:opacity-50" onClick={startNewConversation} disabled={busy}>＋ <span>New conversation</span></button>
         <section className="mt-6 min-w-0" aria-label="Active source document">
           <div className="mb-2 px-1 text-[10px] font-bold tracking-[.14em] text-[#859188]">YOUR SOURCE</div>
@@ -341,7 +352,60 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
       </aside>
       {conversationMenu && <div className="document-context-menu" style={{ left: conversationMenu.x, top: conversationMenu.y }} onClick={(event) => event.stopPropagation()}><button onClick={() => { setConversationMenu(null); void openConversation(conversationMenu.conversation.conversation_id).catch((cause) => setChatError(cause instanceof Error ? cause.message : 'Could not open that conversation.')) }} disabled={busy}>Open conversation</button><button className="danger-action" onClick={() => void deleteConversation(conversationMenu.conversation)} disabled={busy}>Delete conversation</button></div>}
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        <button className={`fixed top-3 z-50 grid h-9 w-9 place-items-center rounded-lg border border-[#e4e9e4] bg-white text-lg text-[#486454] shadow-sm transition-[left] hover:bg-[#f4f7f4] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#54806a] ${sidebarOpen ? 'left-[calc(min(84vw,300px)-1.2rem)] lg:left-[264px]' : 'left-3'}`} onClick={() => setSidebarOpen((open) => !open)} aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'} aria-expanded={sidebarOpen}>{sidebarOpen ? '‹' : '☰'}</button>
+        {/* Top Header Bar for Chat with Back to Workspace */}
+        <header className="shrink-0 flex items-center justify-between border-b border-[#e1e9e3] bg-white px-3 sm:px-5 py-2.5 shadow-2xs z-10">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <button
+              type="button"
+              className="grid h-8 w-8 place-items-center rounded-lg border border-[#e4e9e4] bg-[#f8faf8] text-[#486454] shadow-2xs hover:bg-[#edf3ee] transition cursor-pointer shrink-0"
+              onClick={() => setSidebarOpen((open) => !open)}
+              aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+              title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
+            >
+              {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
+            </button>
+
+            <Link
+              to="/workspace"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#c9ded0] bg-[#f2f8f4] px-3 py-1.5 text-xs font-semibold text-[#1e4e34] hover:bg-[#e4f1e8] hover:border-[#1e4e34] transition shadow-2xs cursor-pointer shrink-0"
+              title="Return to Workspace"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Back to Workspace</span>
+            </Link>
+
+            <div className="hidden sm:flex items-center gap-2 border-l border-[#e5eae5] pl-3 text-xs text-[#52655a] min-w-0">
+              <span className="font-semibold text-[#203c2d] truncate max-w-[180px] md:max-w-[320px]" title={document.filename}>
+                {document.filename}
+              </span>
+              <span className="rounded bg-[#f0f5f1] text-[#2c5a44] px-1.5 py-0.5 text-[10px] font-mono font-medium shrink-0">
+                {isPdf ? 'PDF' : 'DOCX'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              to={`/compare-doc?left=${document.document_id}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#d3ded6] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#415e4f] hover:bg-[#f3f7f4] transition shadow-2xs"
+              title="Compare this document with another draft"
+            >
+              <GitCompare className="h-3.5 w-3.5 text-[#3b6f52]" />
+              <span className="hidden md:inline">Compare</span>
+            </Link>
+
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#d3ded6] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#415e4f] hover:bg-[#f3f7f4] transition shadow-2xs cursor-pointer"
+              onClick={() => setOriginalDocumentOpen(true)}
+              title="View original document"
+            >
+              <FileText className="h-3.5 w-3.5 text-[#3b6f52]" />
+              <span className="hidden md:inline">View Original</span>
+            </button>
+          </div>
+        </header>
+
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto scroll-smooth px-4 py-6 md:px-10" ref={scrollRef} aria-live="polite">
             {loadingHistory ? (
