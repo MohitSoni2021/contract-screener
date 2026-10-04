@@ -65,7 +65,7 @@ def diff_words(
     left_text: str,
     right_text: str,
 ) -> tuple[list[DiffToken], list[DiffToken], bool]:
-    """Computes word-level diff between two texts using an optimized Longest Common Subsequence (LCS).
+    """Computes word-level diff between two texts using an optimized SequenceMatcher.
     Returns separate token lists for the left side ("same" vs "deleted")
     and right side ("same" vs "inserted").
     """
@@ -78,74 +78,26 @@ def diff_words(
 
     left = tokenize_words(left_text)
     right = tokenize_words(right_text)
-    n = len(left)
-    m = len(right)
 
-    prefix_count = 0
-    while prefix_count < n and prefix_count < m and left[prefix_count] == right[prefix_count]:
-        prefix_count += 1
+    import difflib
+    matcher = difflib.SequenceMatcher(None, left, right)
+    raw_left: list[DiffToken] = []
+    raw_right: list[DiffToken] = []
 
-    suffix_count = 0
-    while (
-        suffix_count < n - prefix_count
-        and suffix_count < m - prefix_count
-        and left[n - 1 - suffix_count] == right[m - 1 - suffix_count]
-    ):
-        suffix_count += 1
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            raw_left.append(DiffToken(op="same", text="".join(left[i1:i2])))
+            raw_right.append(DiffToken(op="same", text="".join(right[j1:j2])))
+        elif tag == "delete":
+            raw_left.append(DiffToken(op="deleted", text="".join(left[i1:i2])))
+        elif tag == "insert":
+            raw_right.append(DiffToken(op="inserted", text="".join(right[j1:j2])))
+        elif tag == "replace":
+            raw_left.append(DiffToken(op="deleted", text="".join(left[i1:i2])))
+            raw_right.append(DiffToken(op="inserted", text="".join(right[j1:j2])))
 
-    mid_left = left[prefix_count : n - suffix_count]
-    mid_right = right[prefix_count : m - suffix_count]
-    mid_n = len(mid_left)
-    mid_m = len(mid_right)
-
-    if mid_n == 0:
-        mid_lcs_left: list[DiffToken] = []
-        mid_lcs_right = [DiffToken(op="inserted", text=t) for t in mid_right]
-    elif mid_m == 0:
-        mid_lcs_left = [DiffToken(op="deleted", text=t) for t in mid_left]
-        mid_lcs_right = []
-    elif mid_n * mid_m <= 250000:
-        dp = [[0] * (mid_m + 1) for _ in range(mid_n + 1)]
-        for i in range(1, mid_n + 1):
-            for j in range(1, mid_m + 1):
-                if mid_left[i - 1] == mid_right[j - 1]:
-                    dp[i][j] = dp[i - 1][j - 1] + 1
-                else:
-                    dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
-
-        i, j = mid_n, mid_m
-        rev_left: list[DiffToken] = []
-        rev_right: list[DiffToken] = []
-
-        while i > 0 or j > 0:
-            if i > 0 and j > 0 and mid_left[i - 1] == mid_right[j - 1]:
-                rev_left.append(DiffToken(op="same", text=mid_left[i - 1]))
-                rev_right.append(DiffToken(op="same", text=mid_right[j - 1]))
-                i -= 1
-                j -= 1
-            elif j > 0 and (i == 0 or dp[i][j - 1] >= dp[i - 1][j]):
-                rev_right.append(DiffToken(op="inserted", text=mid_right[j - 1]))
-                j -= 1
-            elif i > 0 and (j == 0 or dp[i][j - 1] < dp[i - 1][j]):
-                rev_left.append(DiffToken(op="deleted", text=mid_left[i - 1]))
-                i -= 1
-
-        rev_left.reverse()
-        rev_right.reverse()
-        mid_lcs_left = rev_left
-        mid_lcs_right = rev_right
-    else:
-        mid_lcs_left = [DiffToken(op="deleted", text=t) for t in mid_left]
-        mid_lcs_right = [DiffToken(op="inserted", text=t) for t in mid_right]
-
-    prefix_tokens = [DiffToken(op="same", text="".join(left[:prefix_count]))] if prefix_count > 0 else []
-    suffix_tokens = [DiffToken(op="same", text="".join(left[n - suffix_count :]))] if suffix_count > 0 else []
-
-    raw_left = _merge_tokens(prefix_tokens + mid_lcs_left + suffix_tokens)
-    raw_right = _merge_tokens(prefix_tokens + mid_lcs_right + suffix_tokens)
-
-    left_tokens = _cluster_edits(raw_left, "deleted")
-    right_tokens = _cluster_edits(raw_right, "inserted")
+    left_tokens = _cluster_edits(_merge_tokens(raw_left), "deleted")
+    right_tokens = _cluster_edits(_merge_tokens(raw_right), "inserted")
 
     has_diff = any(t.op == "deleted" for t in left_tokens) or any(t.op == "inserted" for t in right_tokens)
     return left_tokens, right_tokens, has_diff

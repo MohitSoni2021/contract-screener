@@ -7,8 +7,8 @@ from typing import Any
 from app.services.citations.verifier import SourceDocument
 
 SECTION_REGEX = re.compile(
-    r"^(?:(?:section|article|clause)\s+([0-9a-zA-Z.\-]+)|([0-9]{1,2}\.[0-9]{0,2}))\s*[:.\-]?\s*(.*)$",
-    re.IGNORECASE | re.MULTILINE,
+    r"^(?:(?:section|article|clause)\s+([0-9a-zA-Z.\-]+)|([0-9]{1,2}(?:\.[0-9]{1,2})*))\s*[:.\-–]?\s*(.*)$",
+    re.IGNORECASE,
 )
 MONEY_REGEX = re.compile(
     r"(?:\$|USD|EUR|GBP|€|£)\s?[0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?|\b[0-9]{1,3}(?:,[0-9]{3})*\s*(?:dollars|euros|pounds)\b",
@@ -99,9 +99,29 @@ class MatchedSectionComparison:
 
 def extract_sections(text: str) -> list[ClauseSection]:
     normalized = text.replace("\r\n", "\n")
+
+    # Normalize line breaks before standard section headers:
+    # 1. " Section 2", " Article 3", " Clause 4"
+    # 2. Numbered sections: " 1. DUTIES.", " 2. COMPENSATION."
+    normalized = re.sub(
+        r"(?<=[.!?\)\s])\s+((?:Section|Article|Clause)\s+[0-9a-zA-Z.\-]+(?:\.|\:|\s+[A-Z]))",
+        r"\n\n\1",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(
+        r"(?<=[.!?\)\s])\s+([0-9]{1,2}\.\s+[A-Z][A-Z0-9\s,\-–/]{2,50}(?:\.|\:|\s+[A-Z]))",
+        r"\n\n\1",
+        normalized,
+    )
+
     paragraphs = [
         p.strip()
-        for p in re.split(r"\n{2,}|(?=\n(?:Section|Article|Clause)\s+[0-9a-zA-Z.\-]+)", normalized, flags=re.I)
+        for p in re.split(
+            r"\n{2,}|(?=\n\s*(?:(?:Section|Article|Clause)\s+[0-9a-zA-Z.\-]+|[0-9]{1,2}\.\s+[A-Z]))",
+            normalized,
+            flags=re.IGNORECASE,
+        )
         if p.strip()
     ]
 
@@ -117,15 +137,20 @@ def extract_sections(text: str) -> list[ClauseSection]:
             if current_section:
                 sections.append(current_section)
             num = match.group(1) or match.group(2) or str(section_index)
-            title = match.group(3).strip() if match.group(3) else f"Section {num}"
+            raw_title = match.group(3).strip() if match.group(3) else ""
+            title_parts = re.split(r"[.:\n]", raw_title)
+            heading_name = title_parts[0].strip() if title_parts and title_parts[0].strip() else f"Section {num}"
+            if len(heading_name) > 60:
+                heading_name = heading_name[:60] + "…"
+            title = f"{num}. {heading_name}" if not heading_name.lower().startswith(f"section {num}".lower()) and not heading_name.startswith(f"{num}.") else heading_name
             current_section = ClauseSection(
                 id=f"sec-{section_index}",
                 number=num,
-                title=title[:80] + "…" if len(title) > 80 else title,
+                title=title,
                 text=para,
             )
             section_index += 1
-        elif len(first_line) < 60 and re.match(r"^[A-Z0-9\s,\-:\.]{3,}$", first_line):
+        elif len(first_line) < 60 and re.match(r"^[A-Z0-9\s,\-:\.]{3,}$", first_line) and not first_line.upper().startswith("PAGE "):
             if current_section:
                 sections.append(current_section)
             current_section = ClauseSection(
@@ -150,7 +175,7 @@ def extract_sections(text: str) -> list[ClauseSection]:
 
     if len(sections) <= 1 and len(paragraphs) > 2:
         return [
-            ClauseSection(id=f"sec-{idx + 1}", title=f"Clause {idx + 1}", text=p)
+            ClauseSection(id=f"sec-{idx + 1}", number=str(idx + 1), title=f"Clause {idx + 1}: {p[:40].strip()}…", text=p)
             for idx, p in enumerate(paragraphs)
         ]
 
