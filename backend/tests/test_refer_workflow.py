@@ -180,6 +180,14 @@ def test_compare_contracts_identifies_monetary_and_liability_changes():
     assert any(c["significance"] == "substantive" and "Monetary change" in c["summary"] for c in changes)
     assert any(c["change_type"] == "inserted" and "Confidentiality" in c["summary"] for c in changes)
 
+    from app.routers.compare import generate_comparative_fallback
+    fallback = generate_comparative_fallback("What changed in the liability and fees?", report, doc1, doc2)
+    assert "Contract Comparison Analysis" in fallback["answer"]
+    assert len(fallback["citations"]) > 0
+    for cit in fallback["citations"]:
+        assert cit["documentId"] in {doc1.id, doc2.id}
+        assert cit["quote"]
+
 
 # ---------------------------------------------------------------------------
 # 3. Tracked-Change Redlining Tests

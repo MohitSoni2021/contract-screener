@@ -84,29 +84,66 @@ export type RedlineStagedEdit = {
   applied: boolean
 }
 
-export type CompareCitation = {
-  documentId: string
-  documentName?: string
-  quote: string
-  pageNumber?: number | null
-  blockNumber?: number | null
-  verified?: boolean
+export type ChangeStatus = 'added' | 'deleted' | 'modified' | 'unchanged'
+export type ChangeCategory = 'monetary' | 'liability' | 'termination' | 'intellectual_property' | 'confidentiality' | 'general'
+export type Significance = 'high' | 'medium' | 'low' | 'none'
+
+export interface MatchedSectionComparison {
+  id: string
+  title: string
+  status: ChangeStatus
+  category: ChangeCategory
+  significance: Significance
+  leftText: string | null
+  rightText: string | null
+  explanation: string
+  detectedChanges: string[]
+  favorsParty: 'Customer' | 'Vendor' | 'Mutual / Balanced' | 'Neutral'
+  riskLevel: 'High' | 'Medium' | 'Low'
+  disclaimer: string
 }
 
-export type CompareSummary = {
+export interface ComparisonSummary {
   totalSections: number
   modifiedCount: number
   addedCount: number
   deletedCount: number
   unchangedCount?: number
+  highSignificanceCount?: number
+  mediumSignificanceCount?: number
+  lowSignificanceCount?: number
 }
+
+export interface ComparisonReport {
+  leftDocumentId: string
+  leftDocumentName: string
+  rightDocumentId: string
+  rightDocumentName: string
+  summary: ComparisonSummary
+  sections: MatchedSectionComparison[]
+  changes?: ComparisonChange[]
+}
+
+export type CompareCitation = {
+  documentId: string
+  documentName?: string
+  quote: string
+  pageNumber?: number | null
+  pageStart?: number | null
+  pageEnd?: number | null
+  blockNumber?: number | null
+  verified?: boolean
+}
+
+export type CompareSummary = ComparisonSummary
 
 export type CompareChatMessage = {
   id: string
   role: 'user' | 'assistant'
   content: string
   citations?: CompareCitation[]
-  summary?: CompareSummary
+  summary?: ComparisonSummary
   insufficientEvidence?: boolean
   timestamp: string
 }
+

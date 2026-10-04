@@ -1,4 +1,4 @@
-import { Check, AlertTriangle, FilePenLine } from 'lucide-react'
+import { Check, AlertTriangle, FilePenLine, GitCompare } from 'lucide-react'
 import type { UploadedDocument } from '../types'
 
 type DocumentProcessingCardProps = {
@@ -7,9 +7,10 @@ type DocumentProcessingCardProps = {
   onRemove: () => void
   onOpenChat: () => void
   onOpenRedline?: () => void
+  onCompare?: () => void
 }
 
-function DocumentProcessingCard({ document, removing, onRemove, onOpenChat, onOpenRedline }: DocumentProcessingCardProps) {
+function DocumentProcessingCard({ document, removing, onRemove, onOpenChat, onOpenRedline, onCompare }: DocumentProcessingCardProps) {
   const failed = document.status === 'failed'
   const ready = document.status === 'ready'
   const progress = Math.max(0, Math.min(100, document.progress ?? 0))
@@ -40,6 +41,28 @@ function DocumentProcessingCard({ document, removing, onRemove, onOpenChat, onOp
             <button className="primary-button processing-chat-button" onClick={onOpenChat}>
               Open chat <span>→</span>
             </button>
+            {onCompare && (
+              <button
+                className="secondary-button"
+                onClick={onCompare}
+                title="Compare against another contract draft"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '7px 11px',
+                  borderRadius: '7px',
+                  border: '1px solid #c9ded0',
+                  background: '#f4f9f5',
+                  color: '#2b5a3f',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <GitCompare className="h-3 w-3" /> Compare
+              </button>
+            )}
             {onOpenRedline && (
               <button
                 className="secondary-button"

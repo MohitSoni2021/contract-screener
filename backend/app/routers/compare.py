@@ -106,8 +106,11 @@ async def compare_endpoint(
     left_raw = await _owned_ready_document(database, user.id, payload.left_document_id)
     right_raw = await _owned_ready_document(database, user.id, payload.right_document_id)
 
-    left_text = await _canonical_text(database, left_raw)
-    right_text = await _canonical_text(database, right_raw)
+    try:
+        left_text = await _canonical_text(database, left_raw)
+        right_text = await _canonical_text(database, right_raw)
+    except (ValueError, KeyError, OSError) as exc:
+        raise HTTPException(status_code=422, detail=f"Could not load document text: {exc}") from exc
 
     doc_left = SourceDocument(id=left_raw["document_id"], name=left_raw["filename"], full_text=left_text)
     doc_right = SourceDocument(id=right_raw["document_id"], name=right_raw["filename"], full_text=right_text)
@@ -127,8 +130,11 @@ async def compare_chat_endpoint(
     left_raw = await _owned_ready_document(database, user.id, payload.left_document_id)
     right_raw = await _owned_ready_document(database, user.id, payload.right_document_id)
 
-    left_text = await _canonical_text(database, left_raw)
-    right_text = await _canonical_text(database, right_raw)
+    try:
+        left_text = await _canonical_text(database, left_raw)
+        right_text = await _canonical_text(database, right_raw)
+    except (ValueError, KeyError, OSError) as exc:
+        raise HTTPException(status_code=422, detail=f"Could not load document text: {exc}") from exc
 
     doc_left = SourceDocument(id=left_raw["document_id"], name=left_raw["filename"], full_text=left_text)
     doc_right = SourceDocument(id=right_raw["document_id"], name=right_raw["filename"], full_text=right_text)
@@ -139,7 +145,10 @@ async def compare_chat_endpoint(
 
     changed_sections = [s for s in report.get("sections", []) if s.get("status") != "unchanged"]
 
-    augmented_chunks = list(chunks)
+    augmented_chunks: list[dict[str, Any]] = [
+        {"document_id": c.document_id, "text": c.text}
+        for c in chunks
+    ]
     for sec in changed_sections:
         if sec.get("leftText"):
             augmented_chunks.append({

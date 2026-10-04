@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import DocumentComparison from '../components/DocumentComparison'
 import WorkspaceSidebar from '../components/WorkspaceSidebar'
 import type { User } from '../types'
@@ -16,6 +16,10 @@ type CompareDocPageProps = {
 function CompareDocPage({ user, token, onLogout }: CompareDocPageProps) {
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const initialLeftId = searchParams.get('left') || searchParams.get('v1')
+  const initialRightId = searchParams.get('right') || searchParams.get('v2')
+
   const { items: documents, loading } = useSelector((state: RootState) => state.documents)
 
   useEffect(() => {
@@ -40,7 +44,12 @@ function CompareDocPage({ user, token, onLogout }: CompareDocPageProps) {
           {loading ? (
             <div className="document-restore m-auto" role="status"><span className="spinner" /> Loading your documents…</div>
           ) : (
-            <DocumentComparison documents={documents} token={token} />
+            <DocumentComparison
+              documents={documents}
+              token={token}
+              initialLeftId={initialLeftId}
+              initialRightId={initialRightId}
+            />
           )}
         </section>
       </div>

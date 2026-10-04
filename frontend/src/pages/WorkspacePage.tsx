@@ -176,6 +176,7 @@ function WorkspacePage({ user, token, onLogout }: WorkspacePageProps) {
                     }
                     onOpenChat={() => navigate(`/chat/${item.document_id}`)}
                     onOpenRedline={() => navigate(`/redline/${item.document_id}`)}
+                    onCompare={() => navigate(`/compare-doc?v1=${item.document_id}`)}
                   />
                 ))}
                   <UploadCard
