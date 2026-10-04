@@ -7,6 +7,7 @@ import Brand from './Brand'
 import { apiUrl } from '../config'
 
 const PdfCitationViewer = lazy(() => import('./PdfCitationViewer'))
+import DocxCitationViewer from './DocxCitationViewer'
 
 type DocumentChatProps = {
   document: UploadedDocument
@@ -170,7 +171,7 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
   }, [conversationId, activeAssistant?.message_id, activeAssistant?.citations, selectedCitation, allVerifiedCitations, verifiedCitations])
 
   useEffect(() => {
-    if (!selectedCitation && !originalDocumentOpen) {
+    if (!isPdf || (!selectedCitation && !originalDocumentOpen)) {
       setSourceUrl('')
       setSourceLoading(false)
       return
@@ -180,10 +181,7 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
     let objectUrl = ''
     setSourceUrl('')
     setSourceLoading(true)
-    const filePath = isPdf
-      ? `/api/documents/${document.document_id}/file`
-      : `/api/documents/${document.document_id}/file?format=pdf`
-    api(filePath, { signal: controller.signal })
+    api(`/api/documents/${document.document_id}/file`, { signal: controller.signal })
       .then((response) => response.blob())
       .then((blob) => {
         if (!active) return
@@ -199,7 +197,7 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
       controller.abort()
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [api, document.document_id, document.filename, isPdf, originalDocumentOpen, selectedCitation])
+  }, [api, document.document_id, isPdf, originalDocumentOpen, selectedCitation])
 
 
   function startNewConversation() {
@@ -496,8 +494,14 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
               {verifiedCitations.map((citation) => <button key={citation.chunk_id} type="button" className={`source-panel-card ${selectedCitation?.chunk_id === citation.chunk_id ? 'selected' : ''}`} onClick={() => setSelectedCitation(citation)}><span className="source-panel-card-top"><span className="citation-check">✓</span><strong>{citation.source_id}</strong><span>{citationLocation(citation, isPdf)}</span></span><span className="source-panel-card-quote">{citation.quote}</span></button>)}
             </div>
             {selectedCitation && <div className="source-panel-viewer">
-              {sourceLoading && <div className="source-panel-viewer-status" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" />Opening source…</div>}
-              {sourceUrl && <Suspense fallback={<div className="source-panel-viewer-status" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" />Loading PDF viewer…</div>}><PdfCitationViewer key={selectedCitation.chunk_id} sourceUrl={sourceUrl} citation={selectedCitation} /></Suspense>}
+              {isPdf ? (
+                <>
+                  {sourceLoading && <div className="source-panel-viewer-status" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" />Opening PDF…</div>}
+                  {sourceUrl && <Suspense fallback={<div className="source-panel-viewer-status" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" />Loading PDF viewer…</div>}><PdfCitationViewer key={selectedCitation.chunk_id} sourceUrl={sourceUrl} citation={selectedCitation} /></Suspense>}
+                </>
+              ) : (
+                <DocxCitationViewer key={selectedCitation.chunk_id} document={document} citation={selectedCitation} token={token} />
+              )}
             </div>}
           </div>}
         </div>
@@ -510,12 +514,30 @@ function DocumentChat({ document, token, error, user, onLogout }: DocumentChatPr
               <button className="text-button" onClick={() => { setSelectedCitation(null); setOriginalDocumentOpen(false) }}>Close</button>
             </header>
             <div className={`source-modal-body has-pdf ${originalDocumentOpen ? 'original-document-body' : ''}`}>
-              <div className="source-pdf-viewer">
-                {sourceLoading && <div className="m-auto flex items-center gap-2 text-xs text-[#829087]" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" /> Opening the original document…</div>}
-                {sourceUrl && <Suspense fallback={<div className="m-auto flex items-center gap-2 text-xs text-[#829087]" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" /> Loading PDF viewer…</div>}>
-                  <PdfCitationViewer key={selectedCitation?.chunk_id ?? 'original-document'} sourceUrl={sourceUrl} citation={selectedCitation} />
-                </Suspense>}
-              </div>
+              {isPdf ? (
+                <div className="source-pdf-viewer">
+                  {sourceLoading && <div className="m-auto flex items-center gap-2 text-xs text-[#829087]" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" /> Opening the original document…</div>}
+                  {sourceUrl && <Suspense fallback={<div className="m-auto flex items-center gap-2 text-xs text-[#829087]" role="status"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#cad9d0] border-t-[#3c765d]" /> Loading PDF viewer…</div>}>
+                    <PdfCitationViewer key={selectedCitation?.chunk_id ?? 'original-document'} sourceUrl={sourceUrl} citation={selectedCitation} />
+                  </Suspense>}
+                </div>
+              ) : (
+                <div className="source-pdf-viewer">
+                  <DocxCitationViewer
+                    document={document}
+                    citation={selectedCitation ?? {
+                      source_id: '1',
+                      chunk_id: 'full-doc',
+                      quote: '',
+                      block_start: 1,
+                      char_start: 0,
+                      char_end: 0,
+                      verified: true,
+                    }}
+                    token={token}
+                  />
+                </div>
+              )}
             </div>
           </section>
         </div>
