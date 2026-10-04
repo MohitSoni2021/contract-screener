@@ -7,14 +7,14 @@ import type { AuthSession, User } from '../types'
 type GuestOnlyProps = {
   user: User | null
   restoring: boolean
-  mode: 'login' | 'register'
+  mode?: 'login' | 'register'
   onAuthenticated: (session: AuthSession) => void
 }
 
-export function GuestOnly({ user, restoring, mode, onAuthenticated }: GuestOnlyProps) {
+export function GuestOnly({ user, restoring, onAuthenticated }: GuestOnlyProps) {
   if (restoring) return <RouteLoading />
   if (user) return <Navigate to="/workspace" replace />
-  return <AuthPage mode={mode} onAuthenticated={onAuthenticated} />
+  return <AuthPage onAuthenticated={onAuthenticated} />
 }
 
 type ProtectedRouteProps = {

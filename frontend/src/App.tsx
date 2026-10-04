@@ -67,8 +67,8 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to={user ? '/workspace' : '/login'} replace />} />
-      <Route path="/login" element={<GuestOnly user={user} restoring={restoring} mode="login" onAuthenticated={acceptSession} />} />
-      <Route path="/register" element={<GuestOnly user={user} restoring={restoring} mode="register" onAuthenticated={acceptSession} />} />
+      <Route path="/login" element={<GuestOnly user={user} restoring={restoring} onAuthenticated={acceptSession} />} />
+      <Route path="/register" element={<Navigate to="/login" replace />} />
       <Route
         path="/workspace"
         element={(
