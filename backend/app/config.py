@@ -29,8 +29,14 @@ def token_lifetime_minutes() -> int:
 
 
 def cors_origins() -> list[str]:
-    raw = os.getenv("CORS_ORIGINS", "http://localhost:5173")
-    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    raw = os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,https://contract-screener.netlify.app",
+    )
+    origins = [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
+    if "https://contract-screener.netlify.app" not in origins:
+        origins.append("https://contract-screener.netlify.app")
+    return list(dict.fromkeys(origins))
 
 
 def setting(name: str, default: str = "") -> str:

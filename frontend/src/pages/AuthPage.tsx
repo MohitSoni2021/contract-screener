@@ -34,10 +34,18 @@ function AuthPage({ mode, onAuthenticated }: AuthPageProps) {
           ? { name: name.trim(), email: email.trim(), password }
           : { email: email.trim(), password }),
       })
-      const result = await response.json()
+      const text = await response.text()
+      let result: any = {}
+      if (text) {
+        try {
+          result = JSON.parse(text)
+        } catch {
+          result = { detail: text }
+        }
+      }
       if (!response.ok) {
         const detail = Array.isArray(result.detail) ? result.detail[0]?.msg : result.detail
-        throw new Error(detail ?? 'We could not sign you in. Please try again.')
+        throw new Error(detail ?? (response.status === 404 ? 'Backend authentication route not found (404).' : `Server error (${response.status})`))
       }
       if (!result.access_token || !result.user) throw new Error('The server returned an incomplete sign-in response.')
       onAuthenticated(result as AuthSession)
